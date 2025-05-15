@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Operator {
     Add,
     Sub,
@@ -26,6 +26,12 @@ pub enum Operator {
     Le,
 
     Assign,
+
+    Zext,
+    Sext,
+    ItoF,
+    FtoI,
+    LValueToRValue,
 }
 
 impl Operator {
@@ -57,6 +63,12 @@ impl Operator {
             Operator::Le => "<=",
 
             Operator::Assign => "=",
+
+            Operator::Zext => "zext",
+            Operator::Sext => "sext",
+            Operator::ItoF => "itof",
+            Operator::FtoI => "ftoi",
+            Operator::LValueToRValue => "LValueToRValue",
         }
     }
 
@@ -81,19 +93,40 @@ impl Operator {
                 | Operator::Le
         )
     }
+    pub const fn is_cmp(&self) -> bool {
+        matches!(
+            self,
+            Operator::Eq
+                | Operator::Ne
+                | Operator::Gt
+                | Operator::Ge
+                | Operator::Lt
+                | Operator::Le
+        )
+    }
+    pub const fn is_short_circuit(self) -> bool {
+        matches!(self, Operator::LogicalAnd | Operator::LogicalOr)
+    }
     pub const fn is_unop(self) -> bool {
         matches!(
             self,
-            Operator::BitNot
-                | Operator::LogicalNot
-                | Operator::LogicalAnd
-                | Operator::LogicalOr
+            Operator::BitNot | Operator::LogicalNot | Operator::LogicalAnd | Operator::LogicalOr
         )
     }
     pub const fn has_control_flow(self) -> bool {
         matches!(
             self,
             Operator::LogicalAnd | Operator::LogicalOr | Operator::LogicalNot
+        )
+    }
+    pub const fn is_cast_op(self) -> bool {
+        matches!(
+            self,
+            Operator::Zext
+                | Operator::Sext
+                | Operator::ItoF
+                | Operator::FtoI
+                | Operator::LValueToRValue
         )
     }
 }

@@ -1,10 +1,14 @@
-#[derive(Debug, Clone, PartialEq)]
+use std::rc::Rc;
+
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub enum AstType {
     Void,
+    Bool,
     Int,
     Float,
-    FixedArray(Box<AstType>, u32),
-    DynArray(Box<AstType>),
+    Str,
+    FixedArray(Rc<AstType>, u32),
+    DynArray(Rc<AstType>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -20,8 +24,10 @@ impl ToString for AstType {
     fn to_string(&self) -> String {
         match self {
             AstType::Void => "void".to_string(),
+            AstType::Bool => "bool".to_string(),
             AstType::Int => "int".to_string(),
             AstType::Float => "float".to_string(),
+            AstType::Str => "str".to_string(),
             AstType::FixedArray(ty, size) => format!("{}[{}]", ty.to_string(), size),
             AstType::DynArray(ty) => format!("{}[]", ty.to_string()),
         }
@@ -32,8 +38,10 @@ impl AstType {
     pub fn meets_sized(&self) -> bool {
         match self {
             AstType::Void => false,
+            AstType::Bool => true,
             AstType::Int => true,
             AstType::Float => true,
+            AstType::Str => false,
             AstType::FixedArray(ty, _) => ty.meets_sized(),
             AstType::DynArray(_) => false,
         }
@@ -42,8 +50,10 @@ impl AstType {
     pub fn get_instance_size(&self) -> Option<u32> {
         match self {
             AstType::Void => None,
+            AstType::Bool => Some(1),
             AstType::Int => Some(4),
             AstType::Float => Some(4),
+            AstType::Str => None,
             AstType::FixedArray(ty, nelems) => {
                 if let Some(size) = ty.get_instance_size() {
                     Some(size * nelems)
@@ -58,8 +68,10 @@ impl AstType {
     pub fn get_array_level(&self) -> u32 {
         match self {
             AstType::Void => 0,
+            AstType::Bool => 0,
             AstType::Int => 0,
             AstType::Float => 0,
+            AstType::Str => 0,
             AstType::FixedArray(ty, _) => ty.get_array_level() + 1,
             AstType::DynArray(ty) => ty.get_array_level() + 1,
         }
@@ -81,7 +93,7 @@ impl AstType {
             if *dim == 0 {
                 return Err(AstTypeError::InvalidArraySize);
             }
-            current_type = AstType::FixedArray(Box::new(current_type), *dim);
+            current_type = AstType::FixedArray(Rc::new(current_type), *dim);
         }
         Ok(current_type)
     }

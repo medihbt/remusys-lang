@@ -6,8 +6,9 @@ use std::hash::Hash;
 
 #[derive(Debug, Clone, Hash)]
 pub struct ArrayInitList {
-    pub exprs: Box<[Expr]>,
-    pub vtype: AstType,
+    pub final_elems: Box<[Expr]>,
+    pub type_levels: Box<[AstType]>,
+    pub dimensions: Box<[(usize /* dimension */, usize /* element size */)]>,
 }
 
 #[derive(Debug, Clone, Hash)]

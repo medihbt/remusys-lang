@@ -7,8 +7,20 @@ pub enum AstType {
     Int,
     Float,
     Str,
-    FixedArray(Rc<AstType>, u32),
+    FixedArray(Rc<FixedArrayType>),
     DynArray(Rc<AstType>),
+}
+
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub struct FixedArrayType {
+    pub ty: AstType,
+    pub size: u32,
+}
+
+impl ToString for FixedArrayType {
+    fn to_string(&self) -> String {
+        format!("{}[{}]", self.ty.to_string(), self.size)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -28,7 +40,7 @@ impl ToString for AstType {
             AstType::Int => "int".to_string(),
             AstType::Float => "float".to_string(),
             AstType::Str => "str".to_string(),
-            AstType::FixedArray(ty, size) => format!("{}[{}]", ty.to_string(), size),
+            AstType::FixedArray(farr) => farr.to_string(),
             AstType::DynArray(ty) => format!("{}[]", ty.to_string()),
         }
     }

@@ -1,5 +1,3 @@
-use super::operator::Operator;
-use crate::typing::AstType;
 use binop::{Assign, BinExp};
 use call::Call;
 use ident::Ident;
@@ -7,7 +5,6 @@ use index::ArrayIndex;
 use initlist::{ArrayInitList, RawInitList};
 use literal::Literal;
 use unaryop::{ImplicitCast, UnaryExp};
-use std::{cell::RefCell, hash::Hash};
 
 pub mod binop;
 pub mod call;

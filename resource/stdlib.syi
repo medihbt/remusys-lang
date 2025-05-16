@@ -1,0 +1,22 @@
+[[Intrinsic(id="starttime")]]
+void starttime():
+
+[[Intrinsic(id="stoptime")]]
+void stoptime();
+
+int getint();
+int getch();
+float getfloat();
+
+int getarray(int a[]);
+int getfarray(float f[]);
+
+void putint(int a);
+void putch(int a);
+void putfloat(float f);
+
+// This will generate real printing functions from the format string,
+// since Remusys-IR cannot handle variable-length arguments.
+// The real printing function name is: _Z4putf4line+(line number)
+[[Intrinsic(id="putf")]]
+void putf(__builtin_str fmt, ...);

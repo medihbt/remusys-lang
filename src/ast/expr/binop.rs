@@ -1,6 +1,6 @@
-use crate::ast::operator::Operator;
+use crate::{ast::operator::Operator, typing::AstType};
 
-use super::{Expr, ident::Ident};
+use super::{ident::Ident, Expr, ExprItem, ExprTrait};
 
 #[derive(Debug, Clone, Hash)]
 pub struct BinExp {

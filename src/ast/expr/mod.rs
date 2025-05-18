@@ -6,12 +6,15 @@ use initlist::{ArrayInitList, RawInitList};
 use literal::Literal;
 use unaryop::{ImplicitCast, UnaryExp};
 
+use crate::typing::AstType;
+
 pub mod binop;
 pub mod call;
 pub mod ident;
 pub mod index;
 pub mod initlist;
 pub mod literal;
+pub mod normalize;
 pub mod unaryop;
 
 #[derive(Debug, Clone, Hash)]
@@ -34,6 +37,18 @@ pub enum Expr {
     Call(Box<Call>),
 
     Assign(Box<Assign>),
+}
+
+struct ExprTrait {
+    pub valtype: AstType,
+    pub is_normalized: bool,
+    pub is_constexpr: bool,
+    pub is_lvalue: bool,
+}
+
+trait ExprItem {
+    fn try_normalize(&self, expr_type: &AstType) -> (Option<Expr>, ExprTrait);
+    fn is_normalized(&self) -> bool;
 }
 
 impl Expr {

@@ -13,13 +13,13 @@ pub enum AstType {
 
 #[derive(Debug, Clone, PartialEq, Hash)]
 pub struct FixedArrayType {
-    pub ty: AstType,
-    pub size: u32,
+    pub elemty: AstType,
+    pub nelems: usize,
 }
 
 impl ToString for FixedArrayType {
     fn to_string(&self) -> String {
-        format!("{}[{}]", self.ty.to_string(), self.size)
+        format!("[{}; {}]", self.elemty.to_string(), self.nelems)
     }
 }
 
@@ -54,21 +54,21 @@ impl AstType {
             AstType::Int => true,
             AstType::Float => true,
             AstType::Str => false,
-            AstType::FixedArray(ty, _) => ty.meets_sized(),
+            AstType::FixedArray(ty) => ty.elemty.meets_sized(),
             AstType::DynArray(_) => false,
         }
     }
 
-    pub fn get_instance_size(&self) -> Option<u32> {
+    pub fn get_instance_size(&self) -> Option<usize> {
         match self {
             AstType::Void => None,
             AstType::Bool => Some(1),
             AstType::Int => Some(4),
             AstType::Float => Some(4),
             AstType::Str => None,
-            AstType::FixedArray(ty, nelems) => {
-                if let Some(size) = ty.get_instance_size() {
-                    Some(size * nelems)
+            AstType::FixedArray(ty) => {
+                if let Some(size) = ty.elemty.get_instance_size() {
+                    Some(size * ty.nelems)
                 } else {
                     None
                 }
@@ -84,7 +84,7 @@ impl AstType {
             AstType::Int => 0,
             AstType::Float => 0,
             AstType::Str => 0,
-            AstType::FixedArray(ty, _) => ty.get_array_level() + 1,
+            AstType::FixedArray(ty) => ty.elemty.get_array_level() + 1,
             AstType::DynArray(ty) => ty.get_array_level() + 1,
         }
     }
@@ -92,20 +92,33 @@ impl AstType {
 
 /// Create a new type
 impl AstType {
+    /// Create a multidimensional array type.
+    ///
+    /// e.g. `int[2][3]` -> `new_multidimensional_array(AstType::Int, &[3, 2])`
+    ///
+    /// # Arguments
+    /// * `ty` - The base type of the array.
+    /// * `dimensions` - The dimensions of the array. from outermost to innermost;
+    ///    reversed from the C order and follows the Rust order. `e.g.`:
+    ///   * `int[2][3]` -> `&[3, 2]`
+    ///   * `[[i32;2];3]` -> `&[2, 3]`
     pub fn new_multidimensional_array(
         ty: AstType,
-        dimensions: &[u32],
+        dimensions: &[usize],
     ) -> Result<AstType, AstTypeError> {
         if dimensions.is_empty() {
             return Err(AstTypeError::DimensionsEmpty);
         }
 
         let mut current_type = ty;
-        for dim in dimensions.iter().rev() {
+        for dim in dimensions.iter() {
             if *dim == 0 {
                 return Err(AstTypeError::InvalidArraySize);
             }
-            current_type = AstType::FixedArray(Rc::new(current_type), *dim);
+            current_type = AstType::FixedArray(Rc::new(FixedArrayType {
+                elemty: current_type,
+                nelems: *dim,
+            }));
         }
         Ok(current_type)
     }

@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use block::Block;
-use decl::VarDecl;
+use decl::UnresolvedVarDecl;
 use ifstmt::IfStmt;
 use whilestmt::WhileStmt;
 
@@ -15,7 +15,7 @@ pub mod whilestmt;
 pub enum Stmt {
     None,
     Block(Box<Block>),
-    VarDecl(Box<VarDecl>),
+    VarDecl(Box<UnresolvedVarDecl>),
     If(Rc<IfStmt>),
     While(Rc<WhileStmt>),
     ExprStmt(Rc<ExprStmt>),

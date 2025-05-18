@@ -1,14 +1,129 @@
-use crate::typing::AstType;
+use crate::{
+    typing::{AstType, FixedArrayType},
+    util::MultiLevelIndex,
+};
 
-use super::Expr;
+use super::{Expr, literal::Literal};
 
-use std::hash::Hash;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Hash)]
 pub struct ArrayInitList {
-    pub final_elems: Box<[Expr]>,
+    pub final_elems: Box<[Literal]>,
     pub type_levels: Box<[AstType]>,
-    pub dimensions: Box<[(usize /* dimension */, usize /* element size */)]>,
+    pub dimensions: Box<[usize]>,
+    pub n_final_elems: Box<[usize]>,
+}
+
+impl ArrayInitList {
+    pub fn new_zero(arr_type: Rc<FixedArrayType>) -> Self {
+        let type_levels = Self::_build_type_levels(Rc::clone(&arr_type));
+        let (dimensions, n_elems) = Self::_build_dimensions(&type_levels);
+
+        let final_elems = {
+            let final_type = type_levels.last().unwrap();
+            let elem = match final_type {
+                AstType::Int => Literal::Int(0),
+                AstType::Float => Literal::Float(0.0),
+                _ => panic!("Unsupported type {:?} for array initialization", final_type),
+            };
+            vec![elem; n_elems[0]].into_boxed_slice()
+        };
+
+        Self {
+            final_elems,
+            type_levels,
+            dimensions,
+            n_final_elems: n_elems,
+        }
+    }
+
+    pub fn n_dimensions(&self) -> usize {
+        self.dimensions.len() - 1
+    }
+    pub fn n_final_elements(&self) -> usize {
+        self.dimensions[0]
+    }
+
+    pub fn index_at(&mut self, index: &MultiLevelIndex) -> &mut Literal {
+        if index.n_dimensions() != self.n_dimensions() {
+            panic!(
+                "Dimension level overflow: requires (0..{}) but got {}",
+                self.n_dimensions(),
+                index.n_dimensions()
+            );
+        }
+        if index.ends() {
+            panic!("Index out of bounds");
+        }
+        let mut final_index = 0;
+        for i in 0..index.n_dimensions() {
+            final_index += index.curr[i] * self.dimensions[i + 1];
+        }
+        &mut self.final_elems[final_index]
+    }
+    pub fn index_get(&self, index: &MultiLevelIndex) -> &Literal {
+        if index.n_dimensions() != self.n_dimensions() {
+            panic!(
+                "Dimension level overflow: requires (0..{}) but got {}",
+                self.n_dimensions(),
+                index.n_dimensions()
+            );
+        }
+        if index.ends() {
+            panic!("Index out of bounds");
+        }
+        let mut final_index = 0;
+        for i in 0..index.n_dimensions() {
+            final_index += index.curr[i] * self.dimensions[i + 1];
+        }
+        &self.final_elems[final_index]
+    }
+
+    /// Creates a dimension stack for a fixed array type.
+    ///
+    /// * Elements: The elemeent [0] is the original array type, while every level
+    /// in the stack is the element type of the previous level.
+    /// * Length: `n+1` for `n` dimensions.
+    fn _build_type_levels(arr_type: Rc<FixedArrayType>) -> Box<[AstType]> {
+        let mut curr_type = AstType::FixedArray(arr_type.clone());
+        let mut type_levels = Vec::new();
+        loop {
+            type_levels.push(curr_type.clone());
+            match &curr_type {
+                AstType::FixedArray(farr) => {
+                    curr_type = farr.elemty.clone();
+                }
+                _ => break type_levels.into_boxed_slice(),
+            }
+        }
+    }
+
+    /// Creates a dimension stack for a fixed array type.
+    ///
+    /// * Elements: The elemeent [0] is the total number of elements in the array,
+    ///   while every level in the stack is the number of final elements in this level.
+    ///   The top level is 1.
+    /// * Length: `n+1` for `n` dimensions.
+    fn _build_dimensions(type_levels: &[AstType]) -> (Box<[usize]>, Box<[usize]>) {
+        let n_dimensions = type_levels.len() - 1;
+        let mut dimensions = vec![0; n_dimensions + 1];
+        let mut n_elems = vec![1; n_dimensions + 1];
+        let mut total_nelems = 1;
+        for i in (0..=n_dimensions).rev() {
+            let arr_type = &type_levels[i];
+            let (dim, total_nelems) = match arr_type {
+                AstType::FixedArray(farr) => {
+                    total_nelems *= farr.nelems;
+                    (farr.nelems, total_nelems)
+                }
+                _ => (1, 1),
+            };
+            dimensions[i] = dim;
+            n_elems[i] = total_nelems;
+        }
+        (dimensions.into_boxed_slice(), n_elems.into_boxed_slice())
+    }
 }
 
 #[derive(Debug, Clone, Hash)]
@@ -19,5 +134,107 @@ pub struct RawInitList {
 impl RawInitList {
     pub fn new(exprs: Vec<Expr>) -> Self {
         Self { exprs }
+    }
+
+    /// Converts the raw initialization list into an array initialization list.
+    pub fn into_array(&self, array_ty: &AstType) -> ArrayInitList {
+        let array_ty = match array_ty {
+            AstType::FixedArray(arr_ty) => arr_ty,
+            _ => panic!("Expected fixed array type"),
+        };
+        let mut ret = ArrayInitList::new_zero(Rc::clone(array_ty));
+        Self::_do_fill_array(&mut ret, &self.exprs, 0, 1);
+        ret
+    }
+
+    fn _do_fill_array(to_fill: &mut ArrayInitList, exprs: &[Expr], begin_idx: usize, level: usize) {
+        let max_nelems = to_fill.n_final_elems[level - 1];
+        let mut curr_idx = begin_idx;
+        if curr_idx >= begin_idx + max_nelems {
+            panic!("Index out of bound at this level {}", level);
+        }
+        for exp in exprs {
+            match exp {
+                Expr::Literal(lit) => {
+                    to_fill.final_elems[curr_idx] = lit.clone();
+                    curr_idx += 1;
+                }
+                Expr::RawInitList(r) => {
+                    if level >= to_fill.n_dimensions() {
+                        panic!(
+                            "Level too high ({} >= {}): cannot initialize a literal element with array",
+                            level,
+                            to_fill.n_dimensions()
+                        );
+                    }
+                    let skip_nelems = to_fill.n_final_elems[level];
+                    curr_idx = Self::_ceil_to_multiple_of(curr_idx, skip_nelems);
+                    Self::_do_fill_array(to_fill, &r.exprs, curr_idx, level + 1);
+                    curr_idx += skip_nelems;
+                }
+                Expr::ArrayInitList(..) => panic!("Found partial-initialized items"),
+                _ => panic!("Init list elements should be normalized and evaluated to a literal"),
+            }
+        }
+    }
+
+    const fn _ceil_to_multiple_of(x: usize, n: usize) -> usize {
+        if n == 0 {
+            panic!("N should not be 0");
+        }
+        ((x + n - 1) / n) * n
+    }
+}
+
+#[cfg(test)]
+mod testing {
+    use super::*;
+
+    #[test]
+    fn test_array_init_list() {
+        // int a[2][3] = { 1, 2, { 3, 4 } };
+        let arr_raw_list = RawInitList::new(vec![
+            Expr::Literal(Literal::Int(1)),
+            Expr::Literal(Literal::Int(2)),
+            Expr::RawInitList(RawInitList::new(vec![
+                Expr::Literal(Literal::Int(3)),
+                Expr::Literal(Literal::Int(4)),
+            ])),
+        ]);
+        // int b[2][3] = { 1, 2, 3, 4, 5 ,6 }
+        let brr_raw_list = RawInitList::new(vec![
+            Expr::Literal(Literal::Int(1)),
+            Expr::Literal(Literal::Int(2)),
+            Expr::Literal(Literal::Int(3)),
+            Expr::Literal(Literal::Int(4)),
+            Expr::Literal(Literal::Int(5)),
+            Expr::Literal(Literal::Int(6)),
+        ]);
+
+        // int c[2][3] = { { 1, 2, 3 }, { 4, 5, 6 } }
+        let crr_raw_list = RawInitList::new(vec![
+            Expr::RawInitList(RawInitList::new(vec![
+                Expr::Literal(Literal::Int(1)),
+                Expr::Literal(Literal::Int(2)),
+                Expr::Literal(Literal::Int(3)),
+            ])),
+            Expr::RawInitList(RawInitList::new(vec![
+                Expr::Literal(Literal::Int(4)),
+                Expr::Literal(Literal::Int(5)),
+                Expr::Literal(Literal::Int(6)),
+            ])),
+        ]);
+
+        let arr_ty = AstType::new_multidimensional_array(AstType::Int, &[3, 2]).unwrap();
+        println!("Array type: {}", arr_ty.to_string());
+
+        let arr_init_list = arr_raw_list.into_array(&arr_ty);
+        println!("Array `a` init list: {:#?}", arr_init_list);
+
+        let brr_init_list = brr_raw_list.into_array(&arr_ty);
+        println!("Array `b` init list: {:#?}", brr_init_list);
+
+        let crr_init_list = crr_raw_list.into_array(&arr_ty);
+        println!("Array `c` init list: {:#?}", crr_init_list);
     }
 }

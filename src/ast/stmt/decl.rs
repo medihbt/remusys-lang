@@ -2,6 +2,8 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{ast::expr::Expr, typing::AstType};
 
+use super::block::Block;
+
 pub enum VarKind {
     GlobalConst,
     GlobalVar,
@@ -25,20 +27,50 @@ pub struct UnresolvedVariable {
     pub initval: Option<Expr>,
 }
 
-pub enum VarDefChain {
-    None,
-    Unresolved(Vec<RefCell<UnresolvedVariable>>),
-    Resolved(Box<[Rc<Variable>]>),
+impl UnresolvedVariable {
+    pub fn new(name: String, base_type: AstType, kind: VarKind) -> Self {
+        Self {
+            name,
+            base_type,
+            kind,
+            array_subscript: None,
+            initval: None,
+        }
+    }
+}
+
+pub struct UnresolvedVarDecl {
+    pub is_const: bool,
+    pub base_type: AstType,
+    pub line: usize,
+    pub defs: Vec<RefCell<UnresolvedVariable>>,
 }
 
 pub struct VarDecl {
     pub is_const: bool,
     pub base_type: AstType,
-    pub defs: VarDefChain,
+    pub defs: Box<[Rc<Variable>]>,
 }
 
 pub struct Function {
     pub name: String,
     pub ret_type: AstType,
-    pub args: VarDefChain,
+    pub resolved_args: Box<[Rc<Variable>]>,
+    pub unresolved_args: Vec<UnresolvedVariable>,
+    pub body: Option<Block>,
+}
+
+impl Function {
+    pub fn new(name: String, ret_type: AstType) -> Self {
+        Self {
+            name,
+            ret_type,
+            resolved_args: Box::new([]),
+            unresolved_args: vec![],
+            body: None,
+        }
+    }
+    pub fn is_extern(&self) -> bool {
+        self.body.is_none()
+    }
 }

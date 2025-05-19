@@ -9,5 +9,5 @@
 use super::Expr;
 
 pub struct ExprNormalizer {
-    to_normalize: Expr,
+    pub to_normalize: Expr,
 }

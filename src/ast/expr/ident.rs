@@ -10,7 +10,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub enum Ident {
-    Unresolved(String),
+    Unresolved(String, usize /* line number */),
     Variable(Weak<Variable>),
     Func(Weak<Function>),
 }
@@ -21,7 +21,7 @@ impl Ident {
     }
     pub fn read_name<R>(&self, reader: impl FnOnce(&str) -> R) -> R {
         match self {
-            Self::Unresolved(s) => reader(s.as_str()),
+            Self::Unresolved(s, _) => reader(s.as_str()),
             Self::Variable(v) => reader(v.upgrade().unwrap().name.as_str()),
             Self::Func(f) => reader(f.upgrade().unwrap().name.as_str()),
         }
@@ -29,7 +29,7 @@ impl Ident {
 
     pub fn get_type(&self) -> Option<AstType> {
         match self {
-            Self::Unresolved(_) => None,
+            Self::Unresolved(..) => None,
             Self::Variable(v) => Some(v.upgrade().unwrap().var_type.clone()),
             Self::Func(_) => None,
         }

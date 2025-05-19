@@ -37,18 +37,16 @@ pub enum Expr {
     Call(Box<Call>),
 
     Assign(Box<Assign>),
+
+    IntrinsicTimeStart(usize /* line number */),
+    IntrinsicTimeEnd(usize /* line number */),
 }
 
-struct ExprTrait {
+pub struct ExprTrait {
     pub valtype: AstType,
     pub is_normalized: bool,
     pub is_constexpr: bool,
     pub is_lvalue: bool,
-}
-
-trait ExprItem {
-    fn try_normalize(&self, expr_type: &AstType) -> (Option<Expr>, ExprTrait);
-    fn is_normalized(&self) -> bool;
 }
 
 impl Expr {

@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, Hash)]
 pub struct ArrayInitList {
-    pub final_elems: Box<[Literal]>,
+    pub final_elems: Box<[Expr]>,
     pub type_levels: Box<[AstType]>,
     pub dimensions: Box<[usize]>,
     pub n_final_elems: Box<[usize]>,
@@ -27,7 +27,7 @@ impl ArrayInitList {
                 AstType::Float => Literal::Float(0.0),
                 _ => panic!("Unsupported type {:?} for array initialization", final_type),
             };
-            vec![elem; n_elems[0]].into_boxed_slice()
+            vec![Expr::Literal(elem); n_elems[0]].into_boxed_slice()
         };
 
         Self {
@@ -45,7 +45,7 @@ impl ArrayInitList {
         self.dimensions[0]
     }
 
-    pub fn index_at(&mut self, index: &MultiLevelIndex) -> &mut Literal {
+    pub fn index_at(&mut self, index: &MultiLevelIndex) -> &mut Expr {
         if index.n_dimensions() != self.n_dimensions() {
             panic!(
                 "Dimension level overflow: requires (0..{}) but got {}",
@@ -62,7 +62,7 @@ impl ArrayInitList {
         }
         &mut self.final_elems[final_index]
     }
-    pub fn index_get(&self, index: &MultiLevelIndex) -> &Literal {
+    pub fn index_get(&self, index: &MultiLevelIndex) -> &Expr {
         if index.n_dimensions() != self.n_dimensions() {
             panic!(
                 "Dimension level overflow: requires (0..{}) but got {}",
@@ -156,7 +156,7 @@ impl RawInitList {
         for exp in exprs {
             match exp {
                 Expr::Literal(lit) => {
-                    to_fill.final_elems[curr_idx] = lit.clone();
+                    to_fill.final_elems[curr_idx] = Expr::Literal(lit.clone());
                     curr_idx += 1;
                 }
                 Expr::RawInitList(r) => {
@@ -172,8 +172,20 @@ impl RawInitList {
                     Self::_do_fill_array(to_fill, &r.exprs, curr_idx, level + 1);
                     curr_idx += skip_nelems;
                 }
+
+                // Disable non-primitive types
                 Expr::ArrayInitList(..) => panic!("Found partial-initialized items"),
-                _ => panic!("Init list elements should be normalized and evaluated to a literal"),
+                Expr::Assign(..) => panic!("Found assignment items"),
+                Expr::IntrinsicTimeStart(..) => panic!("Found intrinsic time start items"),
+                Expr::IntrinsicTimeEnd(..) => panic!("Found intrinsic time end items"),
+                Expr::ShortCircuit(..) => panic!("Found short circuit items"),
+                Expr::String(..) => panic!("Found string items"),
+                
+                // Other types
+                _ => {
+                    to_fill.final_elems[curr_idx] = exp.clone();
+                    curr_idx += 1;
+                }
             }
         }
     }

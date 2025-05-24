@@ -33,7 +33,7 @@ use scope::Scope;
 use crate::{
     ast::{
         AstModule,
-        expr::{Expr, literal::Literal, normalize::ExprNormalizer},
+        expr::{Expr, literal::Literal},
         stmt::{
             Stmt,
             decl::{UnresolvedVarDecl, VarDecl, VarKind, Variable},
@@ -61,7 +61,9 @@ impl<'a> AstNormalizer<'a> {
         }
     }
 
-    pub fn run_on_module(&mut self) {}
+    pub fn run_on_module(&mut self) {
+        self.run_on_global_defs(self.module.global_defs.as_mut_slice());
+    }
 
     fn run_on_global_defs(&mut self, defs: &mut [Stmt]) {
         for def in defs.iter_mut() {
@@ -134,7 +136,7 @@ impl<'a> AstNormalizer<'a> {
     ) -> AstType {
         let mut evaluated_subscript = subscript
             .iter()
-            .map(|s| self.run_on_expr(s, should_eval).unwrap())
+            .map(|s| self.run_on_expr(s, None, should_eval))
             .collect::<Vec<_>>();
         evaluated_subscript.reverse();
         let mut final_type = base_type;

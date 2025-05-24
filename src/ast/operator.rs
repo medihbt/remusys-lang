@@ -12,6 +12,7 @@ pub enum Operator {
     Shl,
     Shr,
 
+    Positive,
     Neg,
 
     LogicalAnd,
@@ -49,6 +50,7 @@ impl Operator {
             Operator::Shl => "<<",
             Operator::Shr => ">>",
 
+            Operator::Positive => "+",
             Operator::Neg => "-",
 
             Operator::LogicalAnd => "&&",
@@ -110,7 +112,7 @@ impl Operator {
     pub const fn is_unop(self) -> bool {
         matches!(
             self,
-            Operator::BitNot | Operator::LogicalNot | Operator::LogicalAnd | Operator::LogicalOr
+            Operator::BitNot | Operator::LogicalNot | Operator::Positive | Operator::Neg
         )
     }
     pub const fn has_control_flow(self) -> bool {

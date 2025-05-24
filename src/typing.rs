@@ -1,3 +1,4 @@
+use core::panic;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, Hash)]
@@ -15,6 +16,34 @@ pub enum AstType {
 pub struct FixedArrayType {
     pub elemty: AstType,
     pub nelems: usize,
+}
+
+impl FixedArrayType {
+    pub fn new(elemty: AstType, nelems: usize) -> Self {
+        Self { elemty, nelems }
+    }
+    pub fn new_rc(elemty: AstType, nelems: usize) -> Rc<Self> {
+        Rc::new(Self::new(elemty, nelems))
+    }
+
+    pub fn dump_element_chain(self: &Rc<Self>) -> Vec<AstType> {
+        let mut chain = vec![AstType::FixedArray(Rc::clone(self))];
+        let mut current = &self.elemty;
+        loop {
+            match current {
+                AstType::FixedArray(farr) => {
+                    chain.push(AstType::FixedArray(Rc::clone(farr)));
+                    current = &farr.elemty;
+                }
+                AstType::DynArray(_) => panic!("Dynamic array type in fixed array chain"),
+                AstType::Void | AstType::Bool | AstType::Str => {
+                    panic!("Invalid type in fixed array chain")
+                }
+                _ => break,
+            }
+        }
+        chain
+    }
 }
 
 impl ToString for FixedArrayType {
@@ -121,5 +150,27 @@ impl AstType {
             }));
         }
         Ok(current_type)
+    }
+
+    pub fn dump_element_chain(&self) -> Vec<AstType> {
+        match self {
+            AstType::FixedArray(farr) => farr.dump_element_chain(),
+            AstType::DynArray(elem) => {
+                match elem.as_ref() {
+                    AstType::Void | AstType::Bool | AstType::Str => {
+                        panic!("Invalid type in fixed array chain")
+                    }
+                    AstType::Int => vec![self.clone(), AstType::Int],
+                    AstType::Float => vec![self.clone(), AstType::Float],
+                    AstType::FixedArray(farr) => {
+                        let mut ret = vec![self.clone()];
+                        ret.extend(farr.dump_element_chain());
+                        ret
+                    }
+                    AstType::DynArray(_) => panic!("Dynamic array type in fixed array chain"),
+                }
+            }
+            _ => vec![self.clone()],
+        }
     }
 }

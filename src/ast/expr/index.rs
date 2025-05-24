@@ -5,18 +5,18 @@ use std::{
 
 use crate::typing::AstType;
 
-use super::Expr;
+use super::{ident::Ident, Expr};
 
 #[derive(Debug, Clone)]
 pub struct ArrayIndex {
-    pub indexee: Expr,
-    pub index: Expr,
+    pub indexee: Ident,
+    pub indices: Vec<Expr>,
     pub vtype: RefCell<AstType>,
 }
 
 impl Hash for ArrayIndex {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.indexee.hash(state);
-        self.index.hash(state);
+        self.indices.hash(state);
     }
 }

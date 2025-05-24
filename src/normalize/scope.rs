@@ -1,8 +1,11 @@
 use std::{collections::HashMap, rc::Rc};
 
-use crate::ast::{
-    expr::Expr,
-    stmt::decl::{Function, Variable},
+use crate::{
+    ast::{
+        expr::Expr,
+        stmt::decl::{Function, Variable},
+    },
+    typing::AstType,
 };
 
 pub struct ScopeStack {
@@ -25,7 +28,7 @@ pub enum ScopeKind {
 }
 
 pub enum ScopeSymbol {
-    Const(Expr),
+    Const(Expr, AstType, Rc<Variable>),
     Var(Rc<Variable>),
     Func(Rc<Function>),
 }
@@ -62,11 +65,12 @@ impl Scope {
         }
     }
 
-    pub fn add_const(&mut self, name: String, value: Expr) {
+    pub fn add_const(&mut self, name: String, value: Expr, ty: AstType, var: Rc<Variable>) {
         if self.symbols.contains_key(&name) {
             panic!("Symbol {} already exists in the current scope", name);
         }
-        self.symbols.insert(name, ScopeSymbol::Const(value));
+        self.symbols
+            .insert(name, ScopeSymbol::Const(value, ty, var));
     }
     pub fn add_var(&mut self, name: String, var: Rc<Variable>) {
         if self.symbols.contains_key(&name) {
@@ -104,9 +108,9 @@ impl Scope {
             None
         }
     }
-    pub fn get_const(&self, name: &str) -> Option<&Expr> {
-        if let Some(ScopeSymbol::Const(expr)) = self.symbols.get(name) {
-            Some(expr)
+    pub fn get_const(&self, name: &str) -> Option<(&Expr, &AstType, &Rc<Variable>)> {
+        if let Some(ScopeSymbol::Const(expr, ty, var)) = self.symbols.get(name) {
+            Some((expr, ty, var))
         } else {
             None
         }

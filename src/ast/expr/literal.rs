@@ -1,6 +1,8 @@
 use std::hash::Hash;
 
-#[derive(Debug, Clone, Copy)]
+use crate::typing::AstType;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Literal {
     Int(i32),
     Float(f32),
@@ -12,6 +14,118 @@ impl Hash for Literal {
         match self {
             Literal::Int(i) => i.hash(state),
             Literal::Float(f) => f.to_bits().hash(state),
+        }
+    }
+}
+
+impl Literal {
+    pub fn value_equals(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Literal::Int(i1), Literal::Int(i2)) => i1 == i2,
+            (Literal::Float(f1), Literal::Float(f2)) => f1 == f2,
+            (Literal::Int(i), Literal::Float(f)) => (*i as f32) == *f,
+            (Literal::Float(f), Literal::Int(i)) => *f == (*i as f32),
+        }
+    }
+    pub fn value_cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            (Literal::Int(i1), Literal::Int(i2)) => i1.cmp(i2),
+            (Literal::Float(f1), Literal::Float(f2)) => f1.partial_cmp(f2).unwrap(),
+            (Literal::Int(i), Literal::Float(f)) => (*i as f32).partial_cmp(f).unwrap(),
+            (Literal::Float(f), Literal::Int(i)) => f.partial_cmp(&(*i as f32)).unwrap(),
+        }
+    }
+
+    pub fn add(&self, other: &Self) -> (Self, AstType) {
+        match (self, other) {
+            (Literal::Int(i1), Literal::Int(i2)) => {
+                (Literal::Int(i1 + i2), AstType::Int)
+            }
+            (Literal::Float(f1), Literal::Float(f2)) => {
+                (Literal::Float(f1 + f2), AstType::Float)
+            }
+            (Literal::Int(i), Literal::Float(f)) => {
+                (Literal::Float((*i as f32) + f), AstType::Float)
+            }
+            (Literal::Float(f), Literal::Int(i)) => {
+                (Literal::Float(f + (*i as f32)), AstType::Float)
+            }
+        }
+    }
+    pub fn sub(&self, other: &Self) -> (Self, AstType) {
+        match (self, other) {
+            (Literal::Int(i1), Literal::Int(i2)) => {
+                (Literal::Int(i1 - i2), AstType::Int)
+            }
+            (Literal::Float(f1), Literal::Float(f2)) => {
+                (Literal::Float(f1 - f2), AstType::Float)
+            }
+            (Literal::Int(i), Literal::Float(f)) => {
+                (Literal::Float((*i as f32) - f), AstType::Float)
+            }
+            (Literal::Float(f), Literal::Int(i)) => {
+                (Literal::Float(f - (*i as f32)), AstType::Float)
+            }
+        }
+    }
+    pub fn mul(&self, other: &Self) -> (Self, AstType) {
+        match (self, other) {
+            (Literal::Int(i1), Literal::Int(i2)) => {
+                (Literal::Int(i1 * i2), AstType::Int)
+            }
+            (Literal::Float(f1), Literal::Float(f2)) => {
+                (Literal::Float(f1 * f2), AstType::Float)
+            }
+            (Literal::Int(i), Literal::Float(f)) => {
+                (Literal::Float((*i as f32) * f), AstType::Float)
+            }
+            (Literal::Float(f), Literal::Int(i)) => {
+                (Literal::Float(f * (*i as f32)), AstType::Float)
+            }
+        }
+    }
+    pub fn div(&self, other: &Self) -> (Self, AstType) {
+        if let Literal::Int(0) = other {
+            panic!("Division by zero");
+        }
+        match (self, other) {
+            (Literal::Int(i1), Literal::Int(i2)) => {
+                (Literal::Int(i1 / i2), AstType::Int)
+            }
+            (Literal::Float(f1), Literal::Float(f2)) => {
+                (Literal::Float(f1 / f2), AstType::Float)
+            }
+            (Literal::Int(i), Literal::Float(f)) => {
+                (Literal::Float((*i as f32) / f), AstType::Float)
+            }
+            (Literal::Float(f), Literal::Int(i)) => {
+                (Literal::Float(f / (*i as f32)), AstType::Float)
+            }
+        }
+    }
+    pub fn mod_op(&self, other: &Self) -> (Self, AstType) {
+        if let Literal::Int(0) = other {
+            panic!("Division by zero");
+        }
+        match (self, other) {
+            (Literal::Int(i1), Literal::Int(i2)) => {
+                (Literal::Int(i1 % i2), AstType::Int)
+            }
+            (Literal::Float(f1), Literal::Float(f2)) => {
+                (Literal::Float(f1 % f2), AstType::Float)
+            }
+            (Literal::Int(i), Literal::Float(f)) => {
+                (Literal::Float((*i as f32) % f), AstType::Float)
+            }
+            (Literal::Float(f), Literal::Int(i)) => {
+                (Literal::Float(f % (*i as f32)), AstType::Float)
+            }
+        }
+    }
+    pub fn neg(&self) -> (Self, AstType) {
+        match self {
+            Literal::Int(i) => (Literal::Int(-i), AstType::Int),
+            Literal::Float(f) => (Literal::Float(-f), AstType::Float),
         }
     }
 }

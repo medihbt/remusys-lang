@@ -11,6 +11,6 @@ pub struct BinExp {
 
 #[derive(Debug, Clone, Hash)]
 pub struct Assign {
-    pub lhs: Ident,
+    pub lhs: Expr,
     pub rhs: Expr,
 }

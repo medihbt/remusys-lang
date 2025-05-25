@@ -83,3 +83,47 @@ impl MultiLevelIndex {
         }
     }
 }
+
+/// Convert literal `r#""([^"\\]|\\.)*""#` back to string.
+/// 
+/// e.g. ['"', '\', 'n', '"'] => [0x10]
+pub fn unparse_string_literal(literal: &str) -> String {
+    let mut res = String::with_capacity(literal.len());
+    let mut literal = literal.chars().skip(1);
+    while let Some(c) = literal.next() {
+        if c == '\\' {
+            if let Some(next) = literal.next() {
+                match next {
+                    'n' => res.push('\n'),
+                    't' => res.push('\t'),
+                    'r' => res.push('\r'),
+                    '0' => res.push('\0'),
+                    '\\' => res.push('\\'),
+                    '"' => res.push('"'),
+                    _ => panic!("Invalid escape sequence: \\{}", next),
+                }
+            } else {
+                panic!("Invalid escape sequence: \\");
+            }
+        } else if c == '\"' {
+            // End of string literal
+            break;
+        } else {
+            res.push(c);
+        }
+    }
+    res
+}
+
+#[cfg(test)]
+mod testing {
+    use super::*;
+
+    #[test]
+    fn test_string_literal() {
+        let literal = r#""Hello, world!\n""#;
+        let expected = "Hello, world!\n";
+        let result = unparse_string_literal(literal);
+        assert_eq!(result, expected);
+    }
+}

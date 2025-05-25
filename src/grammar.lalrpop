@@ -22,6 +22,8 @@ use crate::ast::{
     }
 };
 
+use crate::util::unparse_string_literal;
+
 grammar;
 
 DecFloat: f64 = {
@@ -47,18 +49,13 @@ Ident: Ident = {
     <nbyte: @L> <w:Word> => Ident::Unresolved(w.to_string(), Cell::new(nbyte)),
 };
 
-Literal: Literal = {
+pub Literal: Literal = {
     DecInt => Literal::Int(<> as i32),
     HexInt => Literal::Int(<> as i32),
     DecFloat => Literal::Float(<> as f32),
     HexFloat => Literal::Float(<> as f32),
 };
-
-Str: String = r#""([^"\\]|\\.)*""# => {
-    let s = <>;
-    let s = &s[1..s.len()-1];
-    String::from(s)
-};
+Str: String = r#""([^"\\]|\\.)*""# => unparse_string_literal(<>);
 
 AstType: AstType = {
     "void"  => AstType::Void,

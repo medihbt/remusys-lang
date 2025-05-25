@@ -1,6 +1,5 @@
 use std::{
-    hash::{Hash, Hasher},
-    rc::Weak,
+    cell::Cell, hash::{Hash, Hasher}, rc::Weak
 };
 
 use crate::{
@@ -10,7 +9,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub enum Ident {
-    Unresolved(String, usize /* line number */),
+    Unresolved(String, Cell<usize> /* line number */),
     Variable(Weak<Variable>),
     Func(Weak<Function>),
 }

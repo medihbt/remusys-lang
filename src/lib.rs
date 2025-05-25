@@ -1,7 +1,11 @@
+use lalrpop_util::lalrpop_mod;
+
 pub mod ast;
 pub mod normalize;
 pub mod typing;
 pub mod util;
+
+lalrpop_mod!(pub grammar);
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right

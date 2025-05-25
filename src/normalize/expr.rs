@@ -84,7 +84,7 @@ impl<'a> ExprNormalizer<'a> {
 
     pub fn normalize_ident(&mut self, ident: &Ident) -> (Expr, AstType) {
         let (name, line) = if let Ident::Unresolved(name, line) = ident {
-            (name, *line)
+            (name, line.get())
         } else {
             panic!("expect unresolved ident")
         };
@@ -135,7 +135,7 @@ impl<'a> ExprNormalizer<'a> {
 
     fn normalize_call_name_ident(&mut self, call_name: &Ident) -> (Ident, usize) {
         let (name, line) = if let Ident::Unresolved(name, line) = call_name {
-            (name, *line)
+            (name, line.get())
         } else {
             panic!("expect unresolved ident")
         };

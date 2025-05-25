@@ -17,176 +17,113 @@ pub struct AstModule {
 }
 
 impl AstModule {
-    pub fn new_empty(file: String) -> Self {
+    pub fn new_empty_ast(file: String) -> Self {
         Self {
             file,
             global_defs: vec![],
         }
     }
-    pub fn new_with_stdlib(file: String) -> Self {
-        let mut module = Self::new_empty(file);
+    pub fn new_empty_sst(file: String) -> Self {
+        let mut module = Self::new_empty_ast(file);
         module.add_stdlib();
         module
     }
 
     fn add_stdlib(&mut self) {
+        let dynarray_int = AstType::DynArray(Rc::new(AstType::Int));
+        let dynarray_float = AstType::DynArray(Rc::new(AstType::Float));
         // [[Intrinsic(id="starttime")]]
         // void starttime();
-        self.declare_function_full(
-            "starttime".into(),
-            AstType::Void,
-            &[],
-            false,
-            Some(Attr::Intrinsic {
-                id: "starttime".into(),
-            }),
-        );
+        self.declare_intrin("starttime");
         // [[Intrinsic(id="endtime")]]
         // void endtime();
-        self.declare_function_full(
-            "endtime".into(),
-            AstType::Void,
-            &[],
-            false,
-            Some(Attr::Intrinsic {
-                id: "endtime".into(),
-            }),
-        );
+        self.declare_intrin("endtime");
 
         // int getint();
-        self.declare_function_full(
-            "getint".into(),
-            AstType::Int,
-            &[],
-            false,
-            Some(Attr::Intrinsic {
-                id: "getint".into(),
-            }),
-        );
+        self.declare_function("getint", AstType::Int, &[]);
         // int getch();
-        self.declare_function_full(
-            "getch".into(),
-            AstType::Int,
-            &[],
-            false,
-            Some(Attr::Intrinsic { id: "getch".into() }),
-        );
+        self.declare_function("getch", AstType::Int, &[]);
         // float getfloat();
-        self.declare_function_full(
-            "getfloat".into(),
-            AstType::Float,
-            &[],
-            false,
-            Some(Attr::Intrinsic {
-                id: "getfloat".into(),
-            }),
-        );
+        self.declare_function("getfloat", AstType::Float, &[]);
         // int getarray(int a[]);
-        self.declare_function_full(
-            "getarray".into(),
+        self.declare_function(
+            "getarray",
             AstType::Int,
-            &[Rc::new(Variable {
-                name: "a".into(),
-                var_type: AstType::DynArray(Rc::new(AstType::Int)),
-                initval: RefCell::new(Expr::None),
-                kind: VarKind::FuncArg,
-            })],
-            false,
-            Some(Attr::Intrinsic {
-                id: "getarray".into(),
-            }),
+            &[Variable::new_arg("a", dynarray_int)],
         );
         // int getfarray(float f[]);
-        self.declare_function_full(
-            "getfarray".into(),
+        self.declare_function(
+            "getfarray",
             AstType::Int,
-            &[Rc::new(Variable {
-                name: "f".into(),
-                var_type: AstType::DynArray(Rc::new(AstType::Float)),
-                initval: RefCell::new(Expr::None),
-                kind: VarKind::FuncArg,
-            })],
-            false,
-            Some(Attr::Intrinsic {
-                id: "getfarray".into(),
-            }),
+            &[Variable::new_arg("f", dynarray_float)],
         );
         // void putint(int i);
-        self.declare_function_full(
-            "putint".into(),
+        self.declare_function(
+            "putint",
             AstType::Void,
-            &[Rc::new(Variable {
-                name: "i".into(),
-                var_type: AstType::Int,
-                initval: RefCell::new(Expr::None),
-                kind: VarKind::FuncArg,
-            })],
-            false,
-            Some(Attr::Intrinsic {
-                id: "putint".into(),
-            }),
+            &[Variable::new_arg("i", AstType::Int)],
         );
         // void putch(int c);
-        self.declare_function_full(
-            "putch".into(),
+        self.declare_function(
+            "putch",
             AstType::Void,
-            &[Rc::new(Variable {
-                name: "c".into(),
-                var_type: AstType::Int,
-                initval: RefCell::new(Expr::None),
-                kind: VarKind::FuncArg,
-            })],
-            false,
-            Some(Attr::Intrinsic { id: "putch".into() }),
+            &[Variable::new_arg("c", AstType::Int)],
         );
         // void putfloat(float f);
-        self.declare_function_full(
-            "putfloat".into(),
+        self.declare_function(
+            "putfloat",
             AstType::Void,
-            &[Rc::new(Variable {
-                name: "f".into(),
-                var_type: AstType::Float,
-                initval: RefCell::new(Expr::None),
-                kind: VarKind::FuncArg,
-            })],
-            false,
-            Some(Attr::Intrinsic {
-                id: "putfloat".into(),
-            }),
+            &[Variable::new_arg("f", AstType::Float)],
         );
         // void putf(__builtin_str fmt, ...);
         self.declare_function_full(
-            "putf".into(),
+            "putf",
             AstType::Void,
-            &[Rc::new(Variable {
-                name: "fmt".into(),
-                var_type: AstType::Str,
-                initval: RefCell::new(Expr::None),
-                kind: VarKind::FuncArg,
-            })],
+            &[Variable::new_arg("fmt", AstType::Str)],
             true,
-            Some(Attr::Intrinsic { id: "putf".into() }),
+            None,
         );
     }
 
     pub fn declare_function_full(
         &mut self,
-        name: String,
+        name: &str,
         ret_type: AstType,
         args: &[Rc<Variable>],
         is_vararg: bool,
         attr: Option<Attr>,
-    ) -> Rc<RefCell<Function>> {
-        let func = Rc::new(RefCell::new(Function {
-            name: name.clone(),
+    ) -> Rc<Function> {
+        let func = Rc::new(Function {
+            name: name.into(),
             ret_type,
             resolved_args: args.to_vec().into_boxed_slice(),
             unresolved_args: vec![],
             is_vararg,
-            body: None,
+            body: RefCell::new(None),
             attr,
-        }));
+        });
         self.global_defs.push(stmt::Stmt::FuncDecl(func.clone()));
         func
+    }
+    pub fn declare_intrin(&mut self, name: &str) -> Rc<Function> {
+        let func = Rc::new(Function {
+            name: name.into(),
+            ret_type: AstType::Void,
+            resolved_args: Box::new([]),
+            unresolved_args: vec![],
+            is_vararg: false,
+            body: RefCell::new(None),
+            attr: Some(Attr::Intrinsic { id: name.into() }),
+        });
+        self.global_defs.push(stmt::Stmt::FuncDecl(func.clone()));
+        func
+    }
+    pub fn declare_function(
+        &mut self,
+        name: &str,
+        ret_type: AstType,
+        args: &[Rc<Variable>],
+    ) -> Rc<Function> {
+        self.declare_function_full(name, ret_type, args, false, None)
     }
 }

@@ -1,4 +1,7 @@
-use std::{cell::RefCell, rc::{Rc, Weak}};
+use std::{
+    cell::RefCell,
+    rc::{Rc, Weak},
+};
 
 use block::Block;
 use decl::{Function, UnresolvedVarDecl, VarDecl};
@@ -14,10 +17,17 @@ pub mod whilestmt;
 
 pub enum Stmt {
     None,
+    /// Syntax:
+    ///
+    /// ```BNF
+    /// block ::= '{' stmt* '}'
+    /// ```
     Block(Box<Block>),
     UnresolvedVarDecl(Box<UnresolvedVarDecl>),
+
+    /// SST-only, no syntax
     VarDecl(Box<VarDecl>),
-    FuncDecl(Rc<RefCell<Function>>),
+    FuncDecl(Rc<Function>),
     If(Rc<IfStmt>),
     While(Rc<WhileStmt>),
     ExprStmt(Rc<ExprStmt>),
@@ -31,10 +41,22 @@ pub enum Stmt {
     /// In normalize pass, it will be resolved to `ContinueTo`.
     Continue,
 
+    /// SST-only, no syntax
     BreakTo(Weak<WhileStmt>),
+    /// SST-only, no syntax
     ContinueTo(Weak<WhileStmt>),
 }
 
 pub struct ExprStmt {
     pub expr: RefCell<Expr>,
+}
+
+impl Stmt {
+    /// Check if the statement only appears in SST.
+    pub fn is_sst_only(&self) -> bool {
+        matches!(
+            self,
+            Stmt::VarDecl(_) | Stmt::BreakTo(_) | Stmt::ContinueTo(_)
+        )
+    }
 }

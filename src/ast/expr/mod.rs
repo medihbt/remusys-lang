@@ -14,7 +14,6 @@ pub mod ident;
 pub mod index;
 pub mod initlist;
 pub mod literal;
-pub mod normalize;
 pub mod unaryop;
 
 #[derive(Debug, Clone, Hash)]

@@ -20,11 +20,13 @@
 //! AttrItem ::= Idnetifier '=' String
 //! ```
 
+#[derive(Debug, Clone)]
 pub enum Attr {
     Unresolved(UnresolvedAttr),
     Intrinsic { id: String },
 }
 
+#[derive(Debug, Clone)]
 pub struct UnresolvedAttr {
     pub id: String,
     pub attr_item: Vec<(String, String)>,

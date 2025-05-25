@@ -27,7 +27,7 @@
 use core::panic;
 use std::{cell::RefCell, rc::Rc};
 
-use expr::ExprEvaluator;
+use expr::ExprNormalizer;
 use scope::Scope;
 
 use crate::{
@@ -35,8 +35,10 @@ use crate::{
         AstModule,
         expr::{Expr, literal::Literal},
         stmt::{
-            Stmt,
-            decl::{UnresolvedVarDecl, VarDecl, VarKind, Variable},
+            ExprStmt, Stmt,
+            block::Block,
+            decl::{Function, UnresolvedVarDecl, UnresolvedVariable, VarDecl, Variable},
+            ifstmt::IfStmt,
             whilestmt::WhileStmt,
         },
     },
@@ -47,126 +49,18 @@ pub mod expr;
 pub mod scope;
 
 pub struct AstNormalizer<'a> {
-    pub module: &'a mut AstModule,
+    pub ast_module: &'a AstModule,
     pub scope: Vec<Scope>,
     pub loop_stack: Vec<Rc<WhileStmt>>,
 }
 
 impl<'a> AstNormalizer<'a> {
-    pub fn new(module: &'a mut AstModule) -> Self {
+    pub fn new(ast_module: &'a AstModule) -> Self {
         Self {
-            module,
+            ast_module,
             scope: vec![Scope::new(0)],
             loop_stack: vec![],
         }
-    }
-
-    pub fn run_on_module(&mut self) {
-        self.run_on_global_defs(self.module.global_defs.as_mut_slice());
-    }
-
-    fn run_on_global_defs(&mut self, defs: &mut [Stmt]) {
-        for def in defs.iter_mut() {
-            match def {
-                Stmt::UnresolvedVarDecl(var) => {
-                    let var_decl = self.run_on_unresolved_var_decl(var);
-                    Stmt::VarDecl(Box::new(var_decl))
-                }
-                Stmt::FuncDecl(func) => todo!(),
-                Stmt::VarDecl(var_decl) => todo!(),
-                _ => panic!("AST root only support global definitions"),
-            };
-        }
-    }
-
-    fn run_on_resolved_var_decl(&mut self, var_decl: &mut VarDecl) {
-        let top_scope = self.peek_scope_mut();
-        for var in var_decl.defs.iter_mut() {
-            let name = var.name.clone();
-            let var_type = var.var_type.clone();
-            let initval = var.initval.borrow();
-            match var.kind {
-                VarKind::GlobalConst | VarKind::LocalConst => {
-                    top_scope.add_const(name, initval.clone(), var_type, Rc::clone(var));
-                }
-                VarKind::GlobalVar | VarKind::LocalVar | VarKind::FuncArg => {
-                    top_scope.add_var(name, Rc::clone(var))
-                }
-            }
-        }
-    }
-    fn run_on_unresolved_var_decl(&mut self, var_decl: &UnresolvedVarDecl) -> VarDecl {
-        let is_const = var_decl.is_const;
-        let base_type = var_decl.base_type.clone();
-        let mut resolved = Vec::with_capacity(var_decl.defs.len());
-        for def in var_decl.defs.iter() {
-            let def = def.borrow();
-            let name = def.name.as_str();
-            let kind = def.kind;
-
-            // init array subscripts
-            let final_type = match def.array_subscript.as_ref() {
-                None => base_type.clone(),
-                Some(subscript) => self.array_subscript_to_type(base_type.clone(), subscript, true),
-            };
-
-            // init value
-            let init_val = self.run_on_expr(&def.initval, Some(&final_type), is_const);
-
-            resolved.push(Rc::new(Variable {
-                name: name.to_string(),
-                kind,
-                var_type: final_type,
-                initval: RefCell::new(init_val),
-            }));
-        }
-
-        VarDecl {
-            is_const,
-            base_type,
-            defs: resolved.into_boxed_slice(),
-        }
-    }
-
-    fn array_subscript_to_type(
-        &mut self,
-        base_type: AstType,
-        subscript: &[Expr],
-        should_eval: bool,
-    ) -> AstType {
-        let mut evaluated_subscript = subscript
-            .iter()
-            .map(|s| self.run_on_expr(s, None, should_eval))
-            .collect::<Vec<_>>();
-        evaluated_subscript.reverse();
-        let mut final_type = base_type;
-        for e in subscript.iter() {
-            match e {
-                Expr::None => final_type = AstType::DynArray(Rc::new(final_type)),
-                Expr::Literal(Literal::Int(i)) => {
-                    if *i == 0 {
-                        panic!("Array subscript should be a non-zero integer")
-                    } else {
-                        final_type = AstType::FixedArray(Rc::new(FixedArrayType {
-                            elemty: final_type,
-                            nelems: *i as usize,
-                        }))
-                    }
-                }
-                _ => panic!("Array subscript should be a integral constant"),
-            }
-        }
-        final_type
-    }
-
-    fn run_on_expr(
-        &mut self,
-        expr: &Expr,
-        type_request: Option<&AstType>,
-        should_eval: bool,
-    ) -> Expr {
-        let mut expr_normalizer = ExprEvaluator::from_normalizer(self, should_eval);
-        expr_normalizer.normalize_build_expr(expr, type_request).0
     }
 
     fn peek_scope(&self) -> &Scope {
@@ -180,5 +74,293 @@ impl<'a> AstNormalizer<'a> {
     }
     fn pop_scope(&mut self) {
         self.scope.pop();
+    }
+}
+
+impl<'a> AstNormalizer<'a> {
+    pub fn normalize(&mut self) -> AstModule {
+        let mut sst_module = AstModule::new_empty_sst(self.ast_module.file.clone());
+        // 把 SST 中默认导入的符号加载到当前作用域.
+        for def in sst_module.global_defs.iter() {
+            match def {
+                Stmt::FuncDecl(func) => {
+                    self.peek_scope_mut()
+                        .add_func(func.name.clone(), func.clone());
+                }
+                Stmt::VarDecl(var_decl) => {
+                    for var in var_decl.defs.iter() {
+                        self.peek_scope_mut().add_var(var.name.clone(), var.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+        // 继续处理 AST 中的全局定义.
+        self.normalize_global_defs(&mut sst_module, self.ast_module.global_defs.as_slice());
+        sst_module
+    }
+
+    fn normalze_expr(&self, expr: &Expr, type_req: Option<&AstType>, should_eval: bool) -> Expr {
+        let mut expr_normalizer = ExprNormalizer::from_normalizer(self, should_eval);
+        expr_normalizer.normalize_build_expr(expr, type_req).0
+    }
+
+    fn normalize_global_defs(&mut self, sst_module: &mut AstModule, global_defs: &[Stmt]) {
+        for def in global_defs {
+            match def {
+                Stmt::UnresolvedVarDecl(var) => {
+                    self.normalize_unresolved_var_decl(var, &mut sst_module.global_defs);
+                }
+                Stmt::VarDecl(var) => {
+                    self.normalize_resolved_var_decl(var, &mut sst_module.global_defs)
+                }
+                Stmt::FuncDecl(func) => {
+                    self.normalize_func(func, sst_module);
+                }
+                _ => panic!("normalize_global_defs: unexpected statement type"),
+            }
+        }
+    }
+
+    fn normalize_resolved_var_decl(&mut self, var_decl: &VarDecl, statements: &mut Vec<Stmt>) {
+        let mut new_defs = vec![];
+        for var in var_decl.defs.iter() {
+            let initval = self.normalze_expr(&var.initval, Some(&var.var_type), var.is_const());
+            new_defs.push(Rc::new(Variable {
+                name: var.name.clone(),
+                var_type: var.var_type.clone(),
+                initval: initval,
+                kind: var.kind.clone(),
+            }));
+        }
+        self.vardecl_fill_scope_symtab(&new_defs);
+        let new_var_decl = VarDecl {
+            is_const: var_decl.is_const,
+            base_type: var_decl.base_type.clone(),
+            defs: new_defs.into_boxed_slice(),
+        };
+        statements.push(Stmt::VarDecl(Box::new(new_var_decl)));
+    }
+    fn vardecl_fill_scope_symtab(&mut self, vardefs: &[Rc<Variable>]) {
+        for var in vardefs.iter() {
+            if self.peek_scope().symbols.contains_key(&var.name) {
+                panic!("Variable {} already exists in the current scope", var.name);
+            }
+            if var.is_const() {
+                self.peek_scope_mut().add_const(
+                    var.name.clone(),
+                    var.initval.clone(),
+                    var.var_type.clone(),
+                    var.clone(),
+                );
+            } else {
+                self.peek_scope_mut().add_var(var.name.clone(), var.clone());
+            }
+        }
+    }
+    fn normalize_unresolved_var_decl(
+        &mut self,
+        var_decl: &UnresolvedVarDecl,
+        statements: &mut Vec<Stmt>,
+    ) {
+        let is_const = var_decl.is_const;
+        let base_ty = &var_decl.base_type;
+        let new_defs = self.resolve_vardefs(var_decl.defs.as_ref(), is_const);
+        let new_var_decl = VarDecl {
+            is_const,
+            base_type: base_ty.clone(),
+            defs: new_defs,
+        };
+        self.vardecl_fill_scope_symtab(new_var_decl.defs.as_ref());
+        statements.push(Stmt::VarDecl(Box::new(new_var_decl)));
+    }
+
+    fn resolve_vardefs(
+        &mut self,
+        unresolved_defs: &[UnresolvedVariable],
+        is_const: bool,
+    ) -> Box<[Rc<Variable>]> {
+        let mut new_defs = Vec::with_capacity(unresolved_defs.len());
+        for uvar in unresolved_defs.iter() {
+            let name = uvar.name.as_str();
+            let kind = uvar.kind;
+
+            let varty = match &uvar.array_subscript {
+                Some(arrsub) => self.array_dimensions_to_type(arrsub.as_ref(), &uvar.base_type),
+                None => uvar.base_type.clone(),
+            };
+            let initval = self.normalze_expr(&uvar.initval, Some(&varty), is_const);
+            let var = Rc::new(Variable {
+                name: name.into(),
+                var_type: varty,
+                initval,
+                kind,
+            });
+            new_defs.push(var.clone());
+        }
+        new_defs.into_boxed_slice()
+    }
+
+    fn array_dimensions_to_type(&self, arrsub: &[Expr], basety: &AstType) -> AstType {
+        let mut arrsub = arrsub
+            .iter()
+            .map(|x| self.normalze_expr(x, Some(&AstType::Int), true))
+            .collect::<Vec<_>>();
+        // SysY 的数组类型顺序是从外到内, 但是我们需要从内到外.
+        // 例如, 在 SysY 源码中的数组: `int a[2][3][4];`
+        // Remusys 类型系统要求的数组类型: `[[i32; 4]; 3]; 2]`
+        arrsub.reverse();
+
+        let mut arrty = basety.clone();
+        for (idx, dim) in arrsub.iter().enumerate() {
+            arrty = match dim {
+                Expr::None => {
+                    if idx == 0 {
+                        AstType::DynArray(Rc::new(arrty))
+                    } else {
+                        panic!(
+                            "Invalid array dimension: Dynamic array dimension must be the outermost"
+                        )
+                    }
+                }
+                Expr::Literal(Literal::Int(i)) => {
+                    if *i == 0 {
+                        panic!("Invalid array dimension: Array dimension cannot be zero")
+                    }
+                    AstType::FixedArray(Rc::new(FixedArrayType {
+                        elemty: arrty,
+                        nelems: *i as usize,
+                    }))
+                }
+                _ => panic!("Invalid array dimension: Array dimension must be a constant integer"),
+            }
+        }
+        arrty
+    }
+
+    fn normalize_func(&mut self, func: &Function, sst_module: &mut AstModule) {
+        // 解析参数
+        let args = self.resolve_vardefs(func.unresolved_args.as_slice(), false);
+        let func = Rc::new(Function {
+            name: func.name.clone(),
+            ret_type: func.ret_type.clone(),
+            resolved_args: args,
+            unresolved_args: func.unresolved_args.clone(),
+            is_vararg: func.is_vararg,
+            body: RefCell::new(None),
+            attr: func.attr.clone(),
+        });
+        sst_module.global_defs.push(Stmt::FuncDecl(func.clone()));
+        if func.is_extern() {
+            // extern 函数不需要处理函数体
+            return;
+        }
+
+        // 把函数和参数放进符号表
+        self.peek_scope_mut()
+            .add_func(func.name.clone(), func.clone());
+        self.push_scope();
+        self.vardecl_fill_scope_symtab(func.resolved_args.as_ref());
+
+        let newblock = {
+            let block = func.body.borrow();
+            self.normalize_block(block.as_ref().unwrap())
+        };
+        func.body.replace(Some(newblock));
+        self.pop_scope();
+    }
+
+    fn normalize_block(&mut self, block: &Block) -> Block {
+        let mut newblock = Block {
+            stmts: Vec::with_capacity(block.stmts.len()),
+        };
+        self.push_scope();
+        for stmt in block.stmts.iter() {
+            let new_stmt = self.normalize_stmt(stmt);
+            match &new_stmt {
+                Stmt::None => {}
+                _ => newblock.stmts.push(new_stmt),
+            }
+        }
+        self.pop_scope();
+        newblock
+    }
+
+    fn normalize_stmt(&mut self, stmt: &Stmt) -> Stmt {
+        match stmt {
+            Stmt::None => Stmt::None,
+            Stmt::Block(block) => {
+                let new_block = self.normalize_block(block);
+                Stmt::Block(Box::new(new_block))
+            }
+            Stmt::UnresolvedVarDecl(var) => {
+                self.normalize_unresolved_var_decl(var, &mut vec![]);
+                Stmt::None
+            }
+            Stmt::VarDecl(var) => {
+                self.normalize_resolved_var_decl(var, &mut vec![]);
+                Stmt::None
+            }
+            Stmt::FuncDecl(_) => panic!("Cannot handle function declaration in block"),
+            Stmt::If(if_stmt) => {
+                let new_if_stmt = self.normalize_if_stmt(if_stmt);
+                Stmt::If(Rc::new(new_if_stmt))
+            }
+            Stmt::While(while_stmt) => {
+                let new_while_stmt = self.normalize_while_stmt(while_stmt);
+                Stmt::While(new_while_stmt)
+            }
+            Stmt::ExprStmt(expr_stmt) => {
+                let expr = self.normalze_expr(&expr_stmt.expr.borrow(), None, false);
+                Stmt::ExprStmt(Rc::new(ExprStmt {
+                    expr: RefCell::new(expr),
+                }))
+            }
+            Stmt::Return(expr) => {
+                let expr = self.normalze_expr(expr, None, true);
+                Stmt::Return(Rc::new(expr))
+            }
+            Stmt::Break => {
+                if self.loop_stack.is_empty() {
+                    panic!("break statement not in loop");
+                }
+                let weak = Rc::downgrade(self.loop_stack.last().unwrap());
+                Stmt::BreakTo(weak)
+            }
+            Stmt::Continue => {
+                if self.loop_stack.is_empty() {
+                    panic!("continue statement not in loop");
+                }
+                let weak = Rc::downgrade(self.loop_stack.last().unwrap());
+                Stmt::ContinueTo(weak)
+            }
+            Stmt::BreakTo(_) | Stmt::ContinueTo(_) => {
+                panic!("cannot handle resolved break/continue")
+            }
+        }
+    }
+
+    fn normalize_if_stmt(&mut self, if_stmt: &IfStmt) -> IfStmt {
+        let cond = self.normalze_expr(&if_stmt.cond, Some(&AstType::Bool), true);
+        let then_stmt = self.normalize_stmt(&if_stmt.then_stmt);
+        let else_stmt = if_stmt.else_stmt.as_ref().map(|s| self.normalize_stmt(s));
+        IfStmt {
+            cond,
+            then_stmt: Box::new(then_stmt),
+            else_stmt: else_stmt.map(|s| Box::new(s)),
+        }
+    }
+
+    fn normalize_while_stmt(&mut self, while_stmt: &Rc<WhileStmt>) -> Rc<WhileStmt> {
+        let cond = self.normalze_expr(&while_stmt.cond, Some(&AstType::Bool), true);
+        let new_while_stmt = Rc::new(WhileStmt {
+            cond,
+            body: RefCell::new(Box::new(Stmt::None)),
+        });
+        self.loop_stack.push(Rc::clone(&new_while_stmt));
+        let body = self.normalize_stmt(&while_stmt.body.borrow());
+        new_while_stmt.body.replace(Box::new(body));
+        self.loop_stack.pop();
+        new_while_stmt
     }
 }

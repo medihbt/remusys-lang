@@ -19,10 +19,34 @@ pub enum VarKind {
 pub struct Variable {
     pub name: String,
     pub var_type: AstType,
-    pub initval: RefCell<Expr>,
+    pub initval: Expr,
     pub kind: VarKind,
 }
 
+impl Variable {
+    pub fn new_extern(name: String, var_ty: AstType) -> Rc<Self> {
+        Rc::new(Self {
+            name,
+            var_type: var_ty,
+            initval: Expr::None,
+            kind: VarKind::GlobalVar,
+        })
+    }
+    pub fn new_arg(name: &str, var_ty: AstType) -> Rc<Self> {
+        Rc::new(Self {
+            name: name.into(),
+            var_type: var_ty,
+            initval: Expr::None,
+            kind: VarKind::FuncArg,
+        })
+    }
+
+    pub fn is_const(&self) -> bool {
+        matches!(self.kind, VarKind::GlobalConst | VarKind::LocalConst)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct UnresolvedVariable {
     pub name: String,
     pub base_type: AstType,
@@ -47,7 +71,7 @@ pub struct UnresolvedVarDecl {
     pub is_const: bool,
     pub base_type: AstType,
     pub line: usize,
-    pub defs: Vec<RefCell<UnresolvedVariable>>,
+    pub defs: Vec<UnresolvedVariable>,
 }
 
 pub struct VarDecl {
@@ -62,7 +86,7 @@ pub struct Function {
     pub resolved_args: Box<[Rc<Variable>]>,
     pub unresolved_args: Vec<UnresolvedVariable>,
     pub is_vararg: bool,
-    pub body: Option<Block>,
+    pub body: RefCell<Option<Block>>,
     pub attr: Option<Attr>,
 }
 
@@ -74,14 +98,17 @@ impl Function {
             resolved_args: Box::new([]),
             unresolved_args: vec![],
             is_vararg,
-            body: None,
+            body: RefCell::new(None),
             attr: None,
         }
     }
     pub fn is_extern(&self) -> bool {
-        self.body.is_none()
+        self.body.borrow().is_none()
     }
     pub fn header_is_resolved(&self) -> bool {
+        if self.unresolved_args.is_empty() {
+            return true;
+        }
         !self.resolved_args.is_empty()
     }
     pub fn resolve_attr(&mut self) {

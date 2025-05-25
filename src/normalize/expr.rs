@@ -23,15 +23,15 @@ use super::{
     scope::{Scope, ScopeSymbol},
 };
 
-pub struct ExprEvaluator<'a> {
+pub struct ExprNormalizer<'a> {
     pub scope_stack: &'a Vec<Scope>,
     pub should_eval: bool,
 }
 
-impl<'a> ExprEvaluator<'a> {
-    pub fn from_normalizer(normalizer: &'a mut AstNormalizer, should_eval: bool) -> Self {
+impl<'a> ExprNormalizer<'a> {
+    pub fn from_normalizer(normalizer: &'a AstNormalizer, should_eval: bool) -> Self {
         Self {
-            scope_stack: &mut normalizer.scope,
+            scope_stack: &normalizer.scope,
             should_eval,
         }
     }

@@ -133,6 +133,20 @@ impl<'a> ExprNormalizer<'a> {
         (expr, ty)
     }
 
+    fn normalize_call_name_ident(&mut self, call_name: &Ident) -> (Ident, usize) {
+        let (name, line) = if let Ident::Unresolved(name, line) = call_name {
+            (name, *line)
+        } else {
+            panic!("expect unresolved ident")
+        };
+        let global_scope = self.scope_stack.first().expect("global scope");
+        let symbol = match global_scope.get_symbol(name) {
+            Some(ScopeSymbol::Func(f)) => f,
+            _ => panic!("cannot find function `{}` (line {}) in scope", name, line),
+        };
+        (Ident::Func(Rc::downgrade(symbol)), line)
+    }
+
     pub fn normalize_array_index(&mut self, arr_index: &ArrayIndex) -> (Expr, AstType) {
         let (indexee, indexee_ty) = self.normalize_ident(&arr_index.indexee);
         let mut indices = Vec::with_capacity(arr_index.indices.len());
@@ -391,16 +405,11 @@ impl<'a> ExprNormalizer<'a> {
         if self.should_eval {
             panic!("cannot eval function call");
         }
-        let ident_line = match &call.name {
-            Ident::Unresolved(_, line) => *line,
-            _ => panic!("expect unresolved ident"),
-        };
-        let (func, func_ret_ty) = self.normalize_ident(&call.name);
+        let (func, ident_line) = self.normalize_call_name_ident(&call.name);
         let func = match func {
-            Expr::Ident(Ident::Func(func)) => func,
+            Ident::Func(func) => func.upgrade().expect("function should be valid"),
             _ => panic!("expect function"),
         };
-        let func = func.upgrade().expect("function should be valid");
 
         match func.intrinsic_get_id() {
             Some(id) => match id.as_str() {
@@ -430,7 +439,7 @@ impl<'a> ExprNormalizer<'a> {
                         name: Ident::Func(Rc::downgrade(&func)),
                         args,
                     })),
-                    func_ret_ty.clone(),
+                    func.ret_type.clone(),
                 )
             }
         }

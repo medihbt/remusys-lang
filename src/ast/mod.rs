@@ -1,8 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use attr::Attr;
-use expr::Expr;
-use stmt::decl::{Function, VarKind, Variable};
+use stmt::decl::{Function, Variable};
 
 use crate::typing::AstType;
 

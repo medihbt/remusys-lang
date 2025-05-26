@@ -11,6 +11,7 @@ use crate::ast::{
     operator::Operator,
     stmt::{
         Stmt, ExprStmt,
+        block::Block,
         decl::{
             VarKind, UnresolvedVariable, UnresolvedVarDecl,
             Function,
@@ -21,11 +22,12 @@ use crate::ast::{
 
     expr::{
         Expr,
-        binop::BinExp,
+        binop::{BinExp, Assign},
         call::Call,
         ident::Ident,
-        literal::Literal,
         index::ArrayIndex,
+        initlist::RawInitList,
+        literal::Literal,
         unaryop::UnaryExp,
     }
 };
@@ -34,34 +36,137 @@ use crate::util::unparse_string_literal;
 
 grammar;
 
+match {
+    r"\s*" => { },
+    r"//[^\n]*" => { },
+    r"/\*([^*]|\*+[^*/])*\*+/" => { },
+} else {
+    _
+}
+
 DecFloat: f64 = {
-    r"(0|[1-9][0-9]+)\.[0-9]+([eE][+-]?[0-9]+)?" => f64::from_str(<>).unwrap(),
-    r"(0|[1-9][0-9]+)[eE][+-]?[0-9]+" => f64::from_str(<>).unwrap(),
+    r"[0-9]+\.[0-9]+([eE][+-]?[0-9]+)?" => {
+        // println!("DecFloat: {}", <>);
+        f64::from_str(<>).unwrap()
+    },
+    r"[0-9]+[eE][+-]?[0-9]+" => {
+        // println!("DecFloat: {}", <>);
+        f64::from_str(<>).unwrap()
+    },
+    r"\.[0-9]+([eE][+-]?[0-9]+)?" => {
+        // println!("DecFloat: {}", <>);
+        f64::from_str(<>).unwrap()
+    },
+    r"[0-9]+\.([eE][+-]?[0-9]+)?" => {
+        // println!("DecFloat: {}", <>);
+        f64::from_str(<>).unwrap()
+    },
 };
 HexFloat: f64 = {
     // 0x1.2p-2
-    r"0x[0-9a-fA-F]+(\.[0-9a-fA-F]+)?p[+-]?[0-9]+" => f64::from_str(<>).unwrap()
+    r"(0x|0X)[0-9a-fA-F]+(\.[0-9a-fA-F]+)?[pP][+-]?[0-9]+" => {
+        // println!("HexFloat: {}", <>);
+        hexf_parse::parse_hexf64(<>, false).unwrap()
+    },
+    r"(0x|0X)\.[0-9a-fA-F]+[pP][+-]?[0-9]+" => {
+        // println!("HexFloat: {}", <>);
+        hexf_parse::parse_hexf64(<>, false).unwrap()
+    },
 };
-
-DecInt: isize = r"0|[1-9][0-9]*" => isize::from_str(<>).unwrap();
-HexInt: isize = r"0x[0-9a-fA-F]+" => isize::from_str(<>).unwrap();
-
+OctInt: isize = r"0[0-7]+" => {
+    // println!("OctInt: {}", <>);
+    isize::from_str_radix(&<>[1..], 8).unwrap()
+};
+DecInt: isize = r"0|[1-9][0-9]*" => {
+    // println!("DecInt: {}", <>);
+    isize::from_str(<>).unwrap()
+};
+HexInt: isize = <xdigits: r"(0x|0X)[0-9a-fA-F]+"> => {
+    // println!("HexInt: {}", xdigits);
+    isize::from_str_radix(&xdigits[2..], 16).unwrap()
+};
 Word: &'input str = r"[_a-zA-Z][_0-9a-zA-Z]*";
 
-LineComment:  () = r"//[^\n]*" => ();
-BlockComment: () = r"/\*([^*]|\*+[^*/])*\*+/" => ();
-
-Stmt: Stmt = {
-    ";" => Stmt::None,
-    ExprStmt => Stmt::Expr(Rc::new(<>)),
-    IfStmt => Stmt::If(Rc::new(<>)),
-    WhileStmt => Stmt::While(Rc::new(<>)),
-    Block => Stmt::Block(Box::new(<>)),
+pub AstModule: AstModule = {
+    GlobalDecl => AstModule {
+        file: "".into(),
+        global_defs: vec![<>],
+    },
+    <mut rest: AstModule> <gdef: GlobalDecl> => {
+        rest.global_defs.push(gdef);
+        rest
+    },
 };
 
+GlobalDecl: Stmt = {
+    FuncDecl => Stmt::FuncDecl(Rc::new(<>)),
+    <mut gvars: VarDecl> => {
+        let final_kind = if gvars.is_const {
+            VarKind::GlobalConst
+        } else {
+            VarKind::GlobalVar
+        };
+        for def in gvars.defs.iter_mut() {
+            def.kind.set(final_kind);
+        }
+        Stmt::UnresolvedVarDecl(Box::new(gvars))
+    }
+};
+FuncDecl: Function = {
+    <header: FuncHeader> ";" => header,
+    <header: FuncHeader> <body: Block> => {
+        header.body.replace(Some(body));
+        header
+    }
+};
+FuncHeader: Function = {
+    <ret_type: AstType> <name: Word> "(" ")" => {
+        Function::new(name.into(), ret_type, false)
+    },
+    <ret_type: AstType> <name: Word> "(" <args: FixedArgList> ")" => {
+        Function::new(name.into(), ret_type, false).with_args(args)
+    },
+    <ret_type: AstType> <name: Word> "(" <args: FixedArgList> "," "..." ")" => {
+        Function::new(name.into(), ret_type, true).with_args(args)
+    },
+};
+FixedArgList: Vec<UnresolvedVariable> = {
+    <mut rest: FixedArgList> "," <arg: ArgDef> => {
+        rest.push(arg);
+        rest
+    },
+    <arg: ArgDef> => vec![arg],
+};
+ArgDef: UnresolvedVariable = <base_type: AstType> <mut argdef: VarDefUninit> => {
+    argdef.base_type = base_type;
+    argdef.kind.set(VarKind::FuncArg);
+    argdef
+};
+
+Stmt: Stmt = {
+    StmtNoTrailingSubStmt,
+    IfThenStmt      => Stmt::If(Rc::new(<>)),
+    IfThenElseStmt  => Stmt::If(Rc::new(<>)),
+    WhileStmt       => Stmt::While(Rc::new(<>)),
+    VarDecl         => Stmt::UnresolvedVarDecl(Box::new(<>)),
+};
+StmtNoShortIf: Stmt = {
+    StmtNoTrailingSubStmt,
+    IfThenElseNoShortIf => Stmt::If(Rc::new(<>)),
+    WhileStmtNoShortIf  => Stmt::While(Rc::new(<>)),
+};
+StmtNoTrailingSubStmt: Stmt = {
+    Block       => Stmt::Block(Box::new(<>)),
+    ";"         => Stmt::None,
+    ExprStmt    => Stmt::ExprStmt(Rc::new(<>)),
+    "break" ";" => Stmt::Break,
+    "continue" ";"  => Stmt::Continue,
+    "return" ";"    => Stmt::Return(Rc::new(Expr::None)),
+    "return" <expr: Expr> ";" => Stmt::Return(Rc::new(expr)),
+};
 Block: Block = {
-    "{" <stmts: StmtList> "}" =>  Block { stmts },
-    "{" "}" => Block { stmts: vec![] },
+    "{" <stmts: StmtList> "}" => Block { stmts },
+    "{" "}"                   => Block { stmts: vec![] },
 };
 StmtList: Vec<Stmt> = {
     <mut rest: StmtList> <stmt: Stmt> => {
@@ -71,40 +176,119 @@ StmtList: Vec<Stmt> = {
     <stmt: Stmt> => vec![stmt],
 };
 
-VarDecl: UnresolvedVarDecl = {
-    <base_ty: AstType> 
+ExprStmt: ExprStmt = {
+    <expr: Expr> ";" => ExprStmt { expr: RefCell::new(expr) },
+    <assign: AssignExpr> ";" => ExprStmt { expr: RefCell::new(assign) },
 };
 
-VarDef: UnresolvedVariable = {
-    <name: Word> => UnresolvedVariable::new(name.to_string(), VarKind::LocalVar),
+IfThenStmt: IfStmt = "if" "(" <cond: LogicalOr> ")" <then_stmt: Stmt> => IfStmt {
+    cond,
+    then_stmt: Box::new(then_stmt),
+    else_stmt: None,
 };
-
-ExprStmt: Stmt = {
-    <expr: Expr> ";" => Stmt::Expr(ExprStmt { expr }),
-};
-
-IfStmt: IfStmt = {
-    // Handle "dangling else" now
-    #[precedence(level="0")]
-    "if" "(" <cond: LogicalOr> ")" <then_stmt: Stmt> "else" <else_stmt: Stmt> => IfStmt {
+IfThenElseStmt: IfStmt = {
+    "if" "(" <cond: LogicalOr> ")" <then_stmt: StmtNoShortIf> "else" <else_stmt: Stmt> => IfStmt {
         cond,
         then_stmt: Box::new(then_stmt),
         else_stmt: Some(Box::new(else_stmt)),
     },
-    #[precedence(level="1")]
-    "if" "(" <cond: LogicalOr> ")" <then_stmt: Stmt> => IfStmt {
+};
+IfThenElseNoShortIf: IfStmt = {
+    "if" "(" <cond: LogicalOr> ")" <then_stmt: StmtNoShortIf> "else" <else_stmt: StmtNoShortIf> => IfStmt {
         cond,
         then_stmt: Box::new(then_stmt),
-        else_stmt: None,
+        else_stmt: Some(Box::new(else_stmt)),
     },
 };
 
-WhileStmt: WhileStmt = {
-    "while" "(" <cond: LogicalOr> ")" <body: Stmt> => WhileStmt {
-        cond,
-        body: RefCell::new(Box::new(body)),
+WhileStmt: WhileStmt = "while" "(" <cond: LogicalOr> ")" <body: Stmt> => WhileStmt {
+    cond,
+    body: RefCell::new(Box::new(body)),
+};
+WhileStmtNoShortIf: WhileStmt = "while" "(" <cond: LogicalOr> ")" <body: StmtNoShortIf> => WhileStmt {
+    cond,
+    body: RefCell::new(Box::new(body)),
+};
+
+VarDecl: UnresolvedVarDecl = {
+    <base_type: AstType> <mut defs: VarDefList> ";" => {
+        if matches!(base_type, AstType::Void) {
+            panic!("Cannot declare variables of type 'void'");
+        }
+        for uvardef in defs.iter_mut() {
+            uvardef.base_type = base_type.clone();
+            uvardef.kind.set(VarKind::LocalVar);
+        }
+        UnresolvedVarDecl { is_const: false, base_type, defs, }
     },
-}
+    "const" <base_type: AstType> <mut defs: VarDefList> ";" => {
+        if matches!(base_type, AstType::Void) {
+            panic!("Cannot declare variables of type 'void'");
+        }
+        for uvardef in defs.iter_mut() {
+            uvardef.base_type = base_type.clone();
+            uvardef.kind.set(VarKind::LocalConst);
+        }
+        UnresolvedVarDecl { is_const: true, base_type, defs, }
+    },
+};
+VarDefList: Vec<UnresolvedVariable> = {
+    <mut rest: VarDefList> "," <var: VarDef> => {
+        rest.push(var);
+        rest
+    },
+    <var: VarDef> => vec![var],
+};
+VarDef: UnresolvedVariable = {
+    VarDefUninit,
+    <mut vardef: VarDefUninit> "=" <initval: InitExpr> => {
+        vardef.initval = initval;
+        vardef
+    },
+};
+VarDefUninit: UnresolvedVariable = {
+    <name: Word> => {
+        UnresolvedVariable::new(name.to_string())
+    },
+    <name: Word> <arrsub: ArrayDims> => {
+        UnresolvedVariable::new_array(name.to_string(), arrsub)
+    },
+};
+FixedArrayDims: Vec<Expr> = {
+    <mut rest: FixedArrayDims> "[" <index: Expr> "]" => {
+        rest.push(index);
+        rest
+    },
+    "[" <index: Expr> "]" => vec![index],
+};
+ArrayDims: Vec<Expr> = {
+    FixedArrayDims,
+    "[" "]" <fixed: FixedArrayDims>=> {
+        let mut exp = vec![Expr::None];
+        exp.extend(fixed);
+        exp
+    },
+    "[" "]" => vec![Expr::None],
+};
+InitExpr: Expr = {
+    Expr,
+    RawInitList => Expr::RawInitList(<>),
+};
+RawInitList: RawInitList = {
+    "{" "}" => RawInitList { items: vec![] },
+    "{" <items: InitListItems> "}" => RawInitList { items },
+};
+InitListItems: Vec<Expr> = {
+    <mut rest: InitListItems> "," <item: InitExpr> => {
+        rest.push(item);
+        rest
+    },
+    <item: InitExpr> => vec![item],
+};
+
+AssignExpr: Expr = {
+    <lhs: LValue> "=" <rhs: Expr> => Expr::Assign(Box::new(Assign { lhs, rhs })),
+};
 
 LogicalOr: Expr = {
     LogicalAnd,
@@ -175,7 +359,9 @@ LValue: Expr = {
     ArrayIndex => Expr::ArrayIndex(Box::new(<>)),
 };
 Ident: Ident = {
-    <nbyte: @L> <w:Word> => Ident::Unresolved(w.to_string(), Cell::new(nbyte)),
+    <nbyte: @L> <w:Word> => {
+        Ident::Unresolved(w.to_string(), Cell::new(nbyte))
+    },
 };
 ArrayIndex: ArrayIndex = {
     <indexee: Ident> "[" <index: Expr> "]" => ArrayIndex {
@@ -190,6 +376,7 @@ ArrayIndex: ArrayIndex = {
 };
 
 Literal: Literal = {
+    OctInt => Literal::Int(<> as i32),
     DecInt => Literal::Int(<> as i32),
     HexInt => Literal::Int(<> as i32),
     DecFloat => Literal::Float(<> as f32),

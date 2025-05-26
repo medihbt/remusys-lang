@@ -16,6 +16,7 @@ pub enum VarKind {
     FuncArg,
 }
 
+#[derive(Debug, Clone)]
 pub struct Variable {
     pub name: String,
     pub var_type: AstType,
@@ -51,35 +52,46 @@ pub struct UnresolvedVariable {
     pub name: String,
     pub base_type: AstType,
     pub kind: Cell<VarKind>,
-    pub array_subscript: Option<Box<[Expr]>>,
+    pub array_dims: Vec<Expr>,
     pub initval: Expr,
 }
 
 impl UnresolvedVariable {
-    pub fn new(name: String, base_type: AstType, kind: VarKind) -> Self {
+    pub fn new(name: String) -> Self {
         Self {
             name,
-            base_type,
-            kind: Cell::new(kind),
-            array_subscript: None,
+            base_type: AstType::Void, // Base type will be set later
+            kind: Cell::new(VarKind::LocalVar), // Default to LocalVar, can be changed later
+            array_dims: Vec::new(),
+            initval: Expr::None,
+        }
+    }
+    pub fn new_array(name: String, subscript: Vec<Expr>) -> Self {
+        Self {
+            name,
+            base_type: AstType::Void, // Base type will be set later
+            kind: Cell::new(VarKind::LocalVar), // Default to LocalVar, can be changed later
+            array_dims: subscript,
             initval: Expr::None,
         }
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct UnresolvedVarDecl {
     pub is_const: bool,
     pub base_type: AstType,
-    pub line: usize,
     pub defs: Vec<UnresolvedVariable>,
 }
 
+#[derive(Debug, Clone)]
 pub struct VarDecl {
     pub is_const: bool,
     pub base_type: AstType,
     pub defs: Box<[Rc<Variable>]>,
 }
 
+#[derive(Debug, Clone)]
 pub struct Function {
     pub name: String,
     pub ret_type: AstType,
@@ -101,6 +113,10 @@ impl Function {
             body: RefCell::new(None),
             attr: None,
         }
+    }
+    pub fn with_args(mut self, args: Vec<UnresolvedVariable>) -> Self {
+        self.unresolved_args = args;
+        self
     }
     pub fn is_extern(&self) -> bool {
         self.body.borrow().is_none()

@@ -184,10 +184,10 @@ impl<'a> AstNormalizer<'a> {
         for uvar in unresolved_defs.iter() {
             let name = uvar.name.as_str();
             let kind = uvar.kind.get();
-
-            let varty = match &uvar.array_subscript {
-                Some(arrsub) => self.array_dimensions_to_type(arrsub.as_ref(), &uvar.base_type),
-                None => uvar.base_type.clone(),
+            let varty = if uvar.array_dims.is_empty() {
+                uvar.base_type.clone()
+            } else {
+                self.array_dimensions_to_type(&uvar.array_dims, &uvar.base_type)
             };
             let initval = self.normalze_expr(&uvar.initval, Some(&varty), is_const);
             let var = Rc::new(Variable {

@@ -1,6 +1,5 @@
 use std::{
-    cell::RefCell,
-    rc::{Rc, Weak},
+    cell::RefCell, fmt::Debug, rc::{Rc, Weak}
 };
 
 use block::Block;
@@ -15,6 +14,7 @@ pub mod decl;
 pub mod ifstmt;
 pub mod whilestmt;
 
+#[derive(Debug, Clone)]
 pub enum Stmt {
     None,
     /// Syntax:
@@ -47,8 +47,16 @@ pub enum Stmt {
     ContinueTo(Weak<WhileStmt>),
 }
 
+#[derive(Clone)]
 pub struct ExprStmt {
     pub expr: RefCell<Expr>,
+}
+
+impl Debug for ExprStmt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let inner = self.expr.borrow();
+        inner.fmt(f)
+    }
 }
 
 impl Stmt {

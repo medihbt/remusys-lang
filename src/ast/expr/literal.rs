@@ -1,11 +1,20 @@
-use std::hash::Hash;
+use std::{fmt::Debug, hash::Hash};
 
 use crate::typing::AstType;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum Literal {
     Int(i32),
     Float(f32),
+}
+
+impl Debug for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Literal::Int(i) => write!(f, "Int({})", i),
+            Literal::Float(fl) => write!(f, "Float({})", fl),
+        }
+    }
 }
 
 impl Hash for Literal {

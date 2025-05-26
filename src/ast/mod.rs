@@ -8,8 +8,10 @@ use crate::typing::AstType;
 pub mod attr;
 pub mod expr;
 pub mod operator;
+pub mod print;
 pub mod stmt;
 
+#[derive(Debug, Clone)]
 pub struct AstModule {
     pub file: String,
     pub global_defs: Vec<stmt::Stmt>,

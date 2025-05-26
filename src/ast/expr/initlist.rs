@@ -128,12 +128,12 @@ impl ArrayInitList {
 
 #[derive(Debug, Clone, Hash)]
 pub struct RawInitList {
-    pub exprs: Vec<Expr>,
+    pub items: Vec<Expr>,
 }
 
 impl RawInitList {
     pub fn new(exprs: Vec<Expr>) -> Self {
-        Self { exprs }
+        Self { items: exprs }
     }
 
     /// Converts the raw initialization list into an array initialization list.
@@ -143,7 +143,7 @@ impl RawInitList {
             _ => panic!("Expected fixed array type"),
         };
         let mut ret = ArrayInitList::new_zero(Rc::clone(array_ty));
-        Self::_do_fill_array(&mut ret, &self.exprs, 0, 1);
+        Self::_do_fill_array(&mut ret, &self.items, 0, 1);
         ret
     }
 
@@ -169,7 +169,7 @@ impl RawInitList {
                     }
                     let skip_nelems = to_fill.n_final_elems[level];
                     curr_idx = Self::_ceil_to_multiple_of(curr_idx, skip_nelems);
-                    Self::_do_fill_array(to_fill, &r.exprs, curr_idx, level + 1);
+                    Self::_do_fill_array(to_fill, &r.items, curr_idx, level + 1);
                     curr_idx += skip_nelems;
                 }
 

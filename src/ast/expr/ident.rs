@@ -1,5 +1,5 @@
 use std::{
-    cell::Cell, hash::{Hash, Hasher}, rc::Weak
+    cell::Cell, fmt::Debug, hash::{Hash, Hasher}, rc::Weak
 };
 
 use crate::{
@@ -7,11 +7,21 @@ use crate::{
     typing::AstType,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Ident {
     Unresolved(String, Cell<usize> /* line number */),
     Variable(Weak<Variable>),
     Func(Weak<Function>),
+}
+
+impl Debug for Ident {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unresolved(s, _) => write!(f, "Unresolved({})", s),
+            Self::Variable(v) => write!(f, "Variable({})", v.upgrade().unwrap().name),
+            Self::Func(func) => write!(f, "Func({})", func.upgrade().unwrap().name),
+        }
+    }
 }
 
 impl Ident {

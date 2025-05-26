@@ -1,6 +1,7 @@
 use std::{
     str::FromStr,
-    cell::Cell,
+    cell::{Cell, RefCell},
+    rc::Rc,
 };
 
 use crate::typing::{AstType, FixedArrayType};
@@ -13,12 +14,19 @@ use crate::ast::{
         decl::{
             VarKind, UnresolvedVariable, UnresolvedVarDecl,
             Function,
-        }
+        },
+        ifstmt::IfStmt,
+        whilestmt::WhileStmt,
     },
 
     expr::{
+        Expr,
+        binop::BinExp,
+        call::Call,
         ident::Ident,
         literal::Literal,
+        index::ArrayIndex,
+        unaryop::UnaryExp,
     }
 };
 
@@ -43,13 +51,137 @@ Word: &'input str = r"[_a-zA-Z][_0-9a-zA-Z]*";
 LineComment:  () = r"//[^\n]*" => ();
 BlockComment: () = r"/\*([^*]|\*+[^*/])*\*+/" => ();
 
+Stmt: Stmt = {
+    ";" => Stmt::None,
+    ExprStmt => Stmt::Expr(Rc::new(<>)),
+    IfStmt => Stmt::If(Rc::new(<>)),
+    WhileStmt => Stmt::While(Rc::new(<>)),
+    Block => Stmt::Block(Box::new(<>)),
+};
 
+Block: Block = {
+    "{" <stmts: StmtList> "}" =>  Block { stmts },
+    "{" "}" => Block { stmts: vec![] },
+};
+StmtList: Vec<Stmt> = {
+    <mut rest: StmtList> <stmt: Stmt> => {
+        rest.push(stmt);
+        rest
+    },
+    <stmt: Stmt> => vec![stmt],
+};
 
+ExprStmt: Stmt = {
+    <expr: Expr> ";" => Stmt::Expr(ExprStmt { expr }),
+};
+
+IfStmt: IfStmt = {
+    // Handle "dangling else" now
+    #[precedence(level="0")]
+    "if" "(" <cond: LogicalOr> ")" <then_stmt: Stmt> "else" <else_stmt: Stmt> => IfStmt {
+        cond,
+        then_stmt: Box::new(then_stmt),
+        else_stmt: Some(Box::new(else_stmt)),
+    },
+    #[precedence(level="1")]
+    "if" "(" <cond: LogicalOr> ")" <then_stmt: Stmt> => IfStmt {
+        cond,
+        then_stmt: Box::new(then_stmt),
+        else_stmt: None,
+    },
+};
+
+WhileStmt: WhileStmt = {
+    "while" "(" <cond: LogicalOr> ")" <body: Stmt> => WhileStmt {
+        cond,
+        body: RefCell::new(Box::new(body)),
+    },
+}
+
+LogicalOr: Expr = {
+    LogicalAnd,
+    <lhs: LogicalOr> "||" <rhs: LogicalAnd> => Expr::ShortCircuit(Box::new(BinExp { op: Operator::LogicalOr, lhs, rhs })),
+};
+LogicalAnd: Expr = {
+    CmpEqExpr,
+    <lhs: LogicalAnd> "&&" <rhs: CmpEqExpr> => Expr::ShortCircuit(Box::new(BinExp { op: Operator::LogicalAnd, lhs, rhs })),
+};
+
+CmpEqExpr: Expr = {
+    CmpOrdExpr,
+    <lhs: CmpEqExpr> "==" <rhs: CmpOrdExpr> => Expr::CmpOP(Box::new(BinExp { op: Operator::Eq, lhs, rhs })),
+    <lhs: CmpEqExpr> "!=" <rhs: CmpOrdExpr> => Expr::CmpOP(Box::new(BinExp { op: Operator::Ne, lhs, rhs })),
+};
+CmpOrdExpr: Expr = {
+    BinAddExpr,
+    <lhs: CmpOrdExpr> "<" <rhs: BinAddExpr> => Expr::BinOP(Box::new(BinExp { op: Operator::Le, lhs, rhs })),
+    <lhs: CmpOrdExpr> ">" <rhs: BinAddExpr> => Expr::BinOP(Box::new(BinExp { op: Operator::Ge, lhs, rhs })),
+    <lhs: CmpOrdExpr> "<=" <rhs: BinAddExpr> => Expr::BinOP(Box::new(BinExp { op: Operator::Lt, lhs, rhs })),
+    <lhs: CmpOrdExpr> ">=" <rhs: BinAddExpr> => Expr::BinOP(Box::new(BinExp { op: Operator::Gt, lhs, rhs })),
+};
+
+pub Expr: Expr = BinAddExpr;
+
+BinAddExpr: Expr = {
+    BinMulExpr,
+    <lhs: BinAddExpr> "+" <rhs: BinMulExpr> => Expr::BinOP(Box::new(BinExp { op: Operator::Add, lhs, rhs })),
+    <lhs: BinAddExpr> "-" <rhs: BinMulExpr> => Expr::BinOP(Box::new(BinExp { op: Operator::Sub, lhs, rhs })),
+};
+BinMulExpr: Expr = {
+    UnaryExpr,
+    <lhs: BinMulExpr> "*" <rhs: UnaryExpr> => Expr::BinOP(Box::new(BinExp { op: Operator::Mul, lhs, rhs })),
+    <lhs: BinMulExpr> "/" <rhs: UnaryExpr> => Expr::BinOP(Box::new(BinExp { op: Operator::Div, lhs, rhs })),
+    <lhs: BinMulExpr> "%" <rhs: UnaryExpr> => Expr::BinOP(Box::new(BinExp { op: Operator::Mod, lhs, rhs })),
+};
+
+UnaryExpr: Expr = {
+    PrimaryExpr,
+    CallExpr => Expr::Call(Box::new(<>)),
+    "+" <expr: UnaryExpr> => expr,
+    "-" <expr: UnaryExpr> => Expr::UnaryOP(Box::new(UnaryExp { op: Operator::Neg, expr, })),
+    "!" <expr: UnaryExpr> => Expr::UnaryOP(Box::new(UnaryExp { op: Operator::LogicalNot, expr, })),
+};
+
+CallExpr: Call = {
+    <name: Ident> "(" ")" => Call { name, args: vec![], },
+    <name: Ident> "(" <args: ExprList> ")" => Call { name, args },
+    <name: Ident> "(" <args: ExprList> "," ")" => Call { name, args },
+};
+ExprList: Vec<Expr> = {
+    <mut rest: ExprList> "," <single: Expr> => {
+        rest.push(single);
+        rest
+    },
+    <single: Expr> => vec![single],
+};
+
+PrimaryExpr: Expr = {
+    "(" <expr: Expr> ")" => expr,
+    Literal => Expr::Literal(<>),
+    Str => Expr::String(<>),
+    LValue,
+};
+
+LValue: Expr = {
+    Ident => Expr::Ident(<>),
+    ArrayIndex => Expr::ArrayIndex(Box::new(<>)),
+};
 Ident: Ident = {
     <nbyte: @L> <w:Word> => Ident::Unresolved(w.to_string(), Cell::new(nbyte)),
 };
+ArrayIndex: ArrayIndex = {
+    <indexee: Ident> "[" <index: Expr> "]" => ArrayIndex {
+        indexee,
+        indices: vec![index],
+        vtype: RefCell::new(AstType::Void),
+    },
+    <mut last: ArrayIndex> "[" <index: Expr> "]" => {
+        last.indices.push(index);
+        last
+    }
+};
 
-pub Literal: Literal = {
+Literal: Literal = {
     DecInt => Literal::Int(<> as i32),
     HexInt => Literal::Int(<> as i32),
     DecFloat => Literal::Float(<> as f32),

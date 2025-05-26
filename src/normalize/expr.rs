@@ -68,6 +68,7 @@ impl<'a> ExprNormalizer<'a> {
             Expr::Ident(ident) => self.normalize_ident(ident),
             Expr::ArrayIndex(idx) => self.normalize_array_index(idx),
             Expr::BinOP(b) => self.normalize_binop(b),
+            Expr::CmpOP(c) => self.normalize_binop(c),
             Expr::ShortCircuit(s) => self.normalize_binop(s),
             Expr::UnaryOP(u) => self.normalize_unary_op(u),
             Expr::Call(call) => self.normalize_call_expr(call),

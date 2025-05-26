@@ -6,7 +6,6 @@ use initlist::{ArrayInitList, RawInitList};
 use literal::Literal;
 use unaryop::{ImplicitCast, UnaryExp};
 
-use crate::typing::AstType;
 
 pub mod binop;
 pub mod call;
@@ -20,7 +19,7 @@ pub mod unaryop;
 pub enum Expr {
     None,
     Literal(Literal),
-    String(Box<str>),
+    String(String),
 
     RawInitList(RawInitList),
     ArrayInitList(ArrayInitList),
@@ -29,7 +28,8 @@ pub enum Expr {
     ArrayIndex(Box<ArrayIndex>),
 
     BinOP(Box<BinExp>),
-    ShortCircuit(Box<BinExp>),
+    CmpOP(Box<BinExp>), // Comparison operators are a subset of binary operators
+    ShortCircuit(Box<BinExp>), // Logical operators that short-circuit evaluation
 
     UnaryOP(Box<UnaryExp>),
     ImplicitCast(Box<ImplicitCast>),
@@ -39,13 +39,6 @@ pub enum Expr {
 
     IntrinsicTimeStart(usize /* line number */),
     IntrinsicTimeEnd(usize /* line number */),
-}
-
-pub struct ExprTrait {
-    pub valtype: AstType,
-    pub is_normalized: bool,
-    pub is_constexpr: bool,
-    pub is_lvalue: bool,
 }
 
 impl Expr {

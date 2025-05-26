@@ -71,6 +71,14 @@ StmtList: Vec<Stmt> = {
     <stmt: Stmt> => vec![stmt],
 };
 
+VarDecl: UnresolvedVarDecl = {
+    <base_ty: AstType> 
+};
+
+VarDef: UnresolvedVariable = {
+    <name: Word> => UnresolvedVariable::new(name.to_string(), VarKind::LocalVar),
+};
+
 ExprStmt: Stmt = {
     <expr: Expr> ";" => Stmt::Expr(ExprStmt { expr }),
 };

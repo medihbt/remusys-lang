@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::{Cell, RefCell}, rc::Rc};
 
 use crate::{
     ast::{attr::Attr, expr::Expr},
@@ -50,7 +50,7 @@ impl Variable {
 pub struct UnresolvedVariable {
     pub name: String,
     pub base_type: AstType,
-    pub kind: VarKind,
+    pub kind: Cell<VarKind>,
     pub array_subscript: Option<Box<[Expr]>>,
     pub initval: Expr,
 }
@@ -60,7 +60,7 @@ impl UnresolvedVariable {
         Self {
             name,
             base_type,
-            kind,
+            kind: Cell::new(kind),
             array_subscript: None,
             initval: Expr::None,
         }

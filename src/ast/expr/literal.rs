@@ -17,6 +17,15 @@ impl Debug for Literal {
     }
 }
 
+impl ToString for Literal {
+    fn to_string(&self) -> String {
+        match self {
+            Literal::Int(i) => format!("Literal::Int({})", i),
+            Literal::Float(fl) => format!("Literal::Float({})", fl),
+        }
+    }
+}
+
 impl Hash for Literal {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         core::mem::discriminant(self).hash(state);

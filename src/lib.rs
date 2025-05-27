@@ -7,24 +7,17 @@ pub mod util;
 
 lalrpop_mod!(pub grammar);
 
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
 #[cfg(test)]
 mod tests {
+    use crate::ast::print::AstPrinter;
+
     use super::*;
     use std::io::Write;
-    // #[test]
-    // fn it_works() {
-    //     let result = add(2, 2);
-    //     assert_eq!(result, 4);
-    // }
 
     #[test]
     fn parsing_test() {
-        let base_path = "target/functional-sy";
-        // let base_path = "target/self-test";
+        // let base_path = "target/functional-sy";
+        let base_path = "target/self-test";
         let base_path = std::path::Path::new(base_path);
 
         for entry in std::fs::read_dir(base_path).unwrap() {
@@ -45,17 +38,8 @@ mod tests {
             let writer_base_path = path.with_extension("ast");
             let writer = std::fs::File::create(writer_base_path).unwrap();
             let mut writer = std::io::BufWriter::new(writer);
-
-            // Some tests generate a deep AST, while it causes a stack overflow.
-            // Remember these tests and skip them.
-            match path.file_name().and_then(|s| s.to_str()) {
-                Some("86_long_code2.sy") => {
-                    println!("[Skipping deeeeeeeeep AST test that may cause overflow: {:?}]", path);
-                    continue;
-                }
-                Some(_) => writeln!(writer, "{:#?}", result).expect("Failed to write AST to file"),
-                _ => {}
-            }
+            let mut priner = AstPrinter::new(&result, &mut writer);
+            priner.print_module();
         }
     }
 }

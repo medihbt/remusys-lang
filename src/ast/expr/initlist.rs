@@ -132,19 +132,19 @@ pub struct RawInitList {
 }
 
 impl RawInitList {
-    pub fn new(exprs: Vec<Expr>) -> Self {
-        Self { items: exprs }
+    pub fn new(exprs: Vec<Expr>) -> Box<Self> {
+        Box::new(Self { items: exprs })
     }
 
     /// Converts the raw initialization list into an array initialization list.
-    pub fn into_array(&self, array_ty: &AstType) -> ArrayInitList {
+    pub fn into_array(&self, array_ty: &AstType) -> Box<ArrayInitList> {
         let array_ty = match array_ty {
             AstType::FixedArray(arr_ty) => arr_ty,
             _ => panic!("Expected fixed array type"),
         };
         let mut ret = ArrayInitList::new_zero(Rc::clone(array_ty));
         Self::_do_fill_array(&mut ret, &self.items, 0, 1);
-        ret
+        Box::new(ret)
     }
 
     fn _do_fill_array(to_fill: &mut ArrayInitList, exprs: &[Expr], begin_idx: usize, level: usize) {

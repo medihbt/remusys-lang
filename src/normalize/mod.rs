@@ -46,6 +46,7 @@ use crate::{
 };
 
 pub mod expr;
+pub mod expr_norecurse;
 pub mod scope;
 
 pub struct AstNormalizer<'a> {
@@ -102,17 +103,24 @@ impl<'a> AstNormalizer<'a> {
 
     fn normalze_expr(&self, expr: &Expr, type_req: Option<&AstType>, should_eval: bool) -> Expr {
         let mut expr_normalizer = ExprNormalizer::from_normalizer(self, should_eval);
-        expr_normalizer.normalize_build_expr(expr, type_req).0
+        let (new_expr, new_type) = expr_normalizer.normalize_build_expr(expr, type_req);
+        if let Some(AstType::Bool) = type_req {
+            ExprNormalizer::operand_cast_to_bool(new_expr, &new_type)
+        } else {
+            new_expr
+        }
     }
 
     fn normalize_global_defs(&mut self, sst_module: &mut AstModule, global_defs: &[Stmt]) {
         for def in global_defs {
             match def {
                 Stmt::UnresolvedVarDecl(var) => {
-                    self.normalize_unresolved_var_decl(var, &mut sst_module.global_defs);
+                    let new_vardecl = self.normalize_unresolved_var_decl(var);
+                    sst_module.global_defs.push(Stmt::VarDecl(Box::new(new_vardecl)));
                 }
                 Stmt::VarDecl(var) => {
-                    self.normalize_resolved_var_decl(var, &mut sst_module.global_defs)
+                    let new_vardecl = self.normalize_resolved_var_decl(var);
+                    sst_module.global_defs.push(Stmt::VarDecl(Box::new(new_vardecl)));
                 }
                 Stmt::FuncDecl(func) => {
                     self.normalize_func(func, sst_module);
@@ -122,7 +130,7 @@ impl<'a> AstNormalizer<'a> {
         }
     }
 
-    fn normalize_resolved_var_decl(&mut self, var_decl: &VarDecl, statements: &mut Vec<Stmt>) {
+    fn normalize_resolved_var_decl(&mut self, var_decl: &VarDecl) -> VarDecl {
         let mut new_defs = vec![];
         for var in var_decl.defs.iter() {
             let initval = self.normalze_expr(&var.initval, Some(&var.var_type), var.is_const());
@@ -139,7 +147,7 @@ impl<'a> AstNormalizer<'a> {
             base_type: var_decl.base_type.clone(),
             defs: new_defs.into_boxed_slice(),
         };
-        statements.push(Stmt::VarDecl(Box::new(new_var_decl)));
+        new_var_decl
     }
     fn vardecl_fill_scope_symtab(&mut self, vardefs: &[Rc<Variable>]) {
         for var in vardefs.iter() {
@@ -161,8 +169,7 @@ impl<'a> AstNormalizer<'a> {
     fn normalize_unresolved_var_decl(
         &mut self,
         var_decl: &UnresolvedVarDecl,
-        statements: &mut Vec<Stmt>,
-    ) {
+    ) -> VarDecl {
         let is_const = var_decl.is_const;
         let base_ty = &var_decl.base_type;
         let new_defs = self.resolve_vardefs(var_decl.defs.as_ref(), is_const);
@@ -172,7 +179,7 @@ impl<'a> AstNormalizer<'a> {
             defs: new_defs,
         };
         self.vardecl_fill_scope_symtab(new_var_decl.defs.as_ref());
-        statements.push(Stmt::VarDecl(Box::new(new_var_decl)));
+        new_var_decl
     }
 
     fn resolve_vardefs(
@@ -215,7 +222,7 @@ impl<'a> AstNormalizer<'a> {
         for (idx, dim) in arrsub.iter().enumerate() {
             arrty = match dim {
                 Expr::None => {
-                    if idx == 0 {
+                    if idx == arrsub.len() - 1 {
                         AstType::DynArray(Rc::new(arrty))
                     } else {
                         panic!(
@@ -238,35 +245,35 @@ impl<'a> AstNormalizer<'a> {
         arrty
     }
 
-    fn normalize_func(&mut self, func: &Function, sst_module: &mut AstModule) {
+    fn normalize_func(&mut self, old_func: &Function, sst_module: &mut AstModule) {
         // 解析参数
-        let args = self.resolve_vardefs(func.unresolved_args.as_slice(), false);
-        let func = Rc::new(Function {
-            name: func.name.clone(),
-            ret_type: func.ret_type.clone(),
+        let args = self.resolve_vardefs(old_func.unresolved_args.as_slice(), false);
+        let new_func = Rc::new(Function {
+            name: old_func.name.clone(),
+            ret_type: old_func.ret_type.clone(),
             resolved_args: args,
-            unresolved_args: func.unresolved_args.clone(),
-            is_vararg: func.is_vararg,
+            unresolved_args: old_func.unresolved_args.clone(),
+            is_vararg: old_func.is_vararg,
             body: RefCell::new(None),
-            attr: func.attr.clone(),
+            attr: old_func.attr.clone(),
         });
-        sst_module.global_defs.push(Stmt::FuncDecl(func.clone()));
-        if func.is_extern() {
+        sst_module.global_defs.push(Stmt::FuncDecl(new_func.clone()));
+        if old_func.is_extern() {
             // extern 函数不需要处理函数体
             return;
         }
 
         // 把函数和参数放进符号表
         self.peek_scope_mut()
-            .add_func(func.name.clone(), func.clone());
+            .add_func(new_func.name.clone(), new_func.clone());
         self.push_scope();
-        self.vardecl_fill_scope_symtab(func.resolved_args.as_ref());
+        self.vardecl_fill_scope_symtab(new_func.resolved_args.as_ref());
 
         let newblock = {
-            let block = func.body.borrow();
+            let block = old_func.body.borrow();
             self.normalize_block(block.as_ref().unwrap())
         };
-        func.body.replace(Some(newblock));
+        new_func.body.replace(Some(newblock));
         self.pop_scope();
     }
 
@@ -294,12 +301,12 @@ impl<'a> AstNormalizer<'a> {
                 Stmt::Block(Box::new(new_block))
             }
             Stmt::UnresolvedVarDecl(var) => {
-                self.normalize_unresolved_var_decl(var, &mut vec![]);
-                Stmt::None
+                let new_vardecl = self.normalize_unresolved_var_decl(var);
+                Stmt::VarDecl(Box::new(new_vardecl))
             }
             Stmt::VarDecl(var) => {
-                self.normalize_resolved_var_decl(var, &mut vec![]);
-                Stmt::None
+                let new_vardecl = self.normalize_resolved_var_decl(var);
+                Stmt::VarDecl(Box::new(new_vardecl))
             }
             Stmt::FuncDecl(_) => panic!("Cannot handle function declaration in block"),
             Stmt::If(if_stmt) => {
@@ -317,7 +324,7 @@ impl<'a> AstNormalizer<'a> {
                 }))
             }
             Stmt::Return(expr) => {
-                let expr = self.normalze_expr(expr, None, true);
+                let expr = self.normalze_expr(expr, None, false);
                 Stmt::Return(Rc::new(expr))
             }
             Stmt::Break => {
@@ -341,7 +348,7 @@ impl<'a> AstNormalizer<'a> {
     }
 
     fn normalize_if_stmt(&mut self, if_stmt: &IfStmt) -> IfStmt {
-        let cond = self.normalze_expr(&if_stmt.cond, Some(&AstType::Bool), true);
+        let cond = self.normalze_expr(&if_stmt.cond, Some(&AstType::Bool), false);
         let then_stmt = self.normalize_stmt(&if_stmt.then_stmt);
         let else_stmt = if_stmt.else_stmt.as_ref().map(|s| self.normalize_stmt(s));
         IfStmt {
@@ -352,7 +359,7 @@ impl<'a> AstNormalizer<'a> {
     }
 
     fn normalize_while_stmt(&mut self, while_stmt: &Rc<WhileStmt>) -> Rc<WhileStmt> {
-        let cond = self.normalze_expr(&while_stmt.cond, Some(&AstType::Bool), true);
+        let cond = self.normalze_expr(&while_stmt.cond, Some(&AstType::Bool), false);
         let new_while_stmt = Rc::new(WhileStmt {
             cond,
             body: RefCell::new(Box::new(Stmt::None)),

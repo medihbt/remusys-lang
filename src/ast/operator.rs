@@ -28,10 +28,10 @@ pub enum Operator {
 
     Assign,
 
-    Zext,
-    Sext,
     ItoF,
     FtoI,
+    BoolToInt,
+    BoolToFloat,
     LValueToRValue,
 }
 
@@ -66,10 +66,10 @@ impl Operator {
 
             Operator::Assign => "=",
 
-            Operator::Zext => "zext",
-            Operator::Sext => "sext",
             Operator::ItoF => "itof",
             Operator::FtoI => "ftoi",
+            Operator::BoolToInt => "bool_to_int",
+            Operator::BoolToFloat => "bool_to_float",
             Operator::LValueToRValue => "LValueToRValue",
         }
     }
@@ -98,12 +98,7 @@ impl Operator {
     pub const fn is_cmp(&self) -> bool {
         matches!(
             self,
-            Operator::Eq
-                | Operator::Ne
-                | Operator::Gt
-                | Operator::Ge
-                | Operator::Lt
-                | Operator::Le
+            Operator::Eq | Operator::Ne | Operator::Gt | Operator::Ge | Operator::Lt | Operator::Le
         )
     }
     pub const fn is_short_circuit(self) -> bool {
@@ -124,10 +119,10 @@ impl Operator {
     pub const fn is_cast_op(self) -> bool {
         matches!(
             self,
-            Operator::Zext
-                | Operator::Sext
-                | Operator::ItoF
+            Operator::ItoF
                 | Operator::FtoI
+                | Operator::BoolToInt
+                | Operator::BoolToFloat
                 | Operator::LValueToRValue
         )
     }

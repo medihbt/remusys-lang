@@ -274,9 +274,9 @@ InitExpr: Expr = {
     Expr,
     RawInitList => Expr::RawInitList(<>),
 };
-RawInitList: RawInitList = {
-    "{" "}" => RawInitList { items: vec![] },
-    "{" <items: InitListItems> "}" => RawInitList { items },
+RawInitList: Box<RawInitList> = {
+    "{" "}" => RawInitList::new(vec![]),
+    "{" <items: InitListItems> "}" => RawInitList::new(items),
 };
 InitListItems: Vec<Expr> = {
     <mut rest: InitListItems> "," <item: InitExpr> => {

@@ -21,8 +21,8 @@ pub enum Expr {
     Literal(Literal),
     String(String),
 
-    RawInitList(RawInitList),
-    ArrayInitList(ArrayInitList),
+    RawInitList(Box<RawInitList>),
+    ArrayInitList(Box<ArrayInitList>),
 
     Ident(Ident),
     ArrayIndex(Box<ArrayIndex>),

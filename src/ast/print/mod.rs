@@ -2,13 +2,9 @@ use core::panic;
 use std::cell::{Cell, RefCell};
 
 use super::{
-    AstModule,
-    expr::Expr,
-    stmt::{
-        Stmt,
-        block::Block,
-        decl::{Function, UnresolvedVarDecl, UnresolvedVariable, VarDecl},
-    },
+    expr::{ident::Ident, Expr}, stmt::{
+        block::Block, decl::{Function, UnresolvedVarDecl, UnresolvedVariable, VarDecl}, Stmt
+    }, AstModule
 };
 
 pub struct AstPrinter<'a> {
@@ -17,11 +13,6 @@ pub struct AstPrinter<'a> {
     indent: Cell<usize>,
 }
 
-struct BlockInfo<'a> {
-    is_exit: bool,
-    block: &'a Stmt,
-    ident: usize,
-}
 enum ExprState<'a> {
     Enter {
         ident: usize,
@@ -495,8 +486,13 @@ impl<'a> AstPrinter<'a> {
             }
             Expr::Call(call) => {
                 self.write_fmt(format_args!(
-                    "Call (func: {}, n_args: {}) [",
+                    "Call (func: {}, line: {}, n_args: {}) [",
                     call.name.get_name(),
+                    if let Ident::Unresolved(_, pos) = &call.name {
+                        pos.get()
+                    } else {
+                        0
+                    },
                     call.args.len()
                 ));
                 if call.args.is_empty() {

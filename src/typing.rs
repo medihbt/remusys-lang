@@ -39,7 +39,10 @@ impl FixedArrayType {
                 AstType::Void | AstType::Bool | AstType::Str => {
                     panic!("Invalid type in fixed array chain")
                 }
-                _ => break,
+                _ => {
+                    chain.push(current.clone());
+                    break
+                },
             }
         }
         chain

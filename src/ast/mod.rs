@@ -50,13 +50,13 @@ impl AstModule {
         self.declare_function(
             "getarray",
             AstType::Int,
-            &[Variable::new_arg("a", dynarray_int)],
+            &[Variable::new_arg("a", dynarray_int.clone())],
         );
         // int getfarray(float f[]);
         self.declare_function(
             "getfarray",
             AstType::Int,
-            &[Variable::new_arg("f", dynarray_float)],
+            &[Variable::new_arg("f", dynarray_float.clone())],
         );
         // void putint(int i);
         self.declare_function(
@@ -75,6 +75,24 @@ impl AstModule {
             "putfloat",
             AstType::Void,
             &[Variable::new_arg("f", AstType::Float)],
+        );
+        // void putarray(int n, int a[]);
+        self.declare_function(
+            "putarray",
+            AstType::Void,
+            &[
+                Variable::new_arg("n", AstType::Int),
+                Variable::new_arg("a", dynarray_int.clone()),
+            ],
+        );
+        // void putfarray(int n, float f[]);
+        self.declare_function(
+            "putfarray",
+            AstType::Void,
+            &[
+                Variable::new_arg("n", AstType::Int),
+                Variable::new_arg("f", dynarray_float.clone()),
+            ],
         );
         // void putf(__builtin_str fmt, ...);
         self.declare_function_full(

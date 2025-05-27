@@ -166,25 +166,33 @@ impl<'a> ExprNormalizer<'a> {
         }
 
         let array_elem_chain = indexee_ty.dump_element_chain();
-        if array_elem_chain.len() != indices.len() + 1 {
-            panic!(
-                "array index length mismatch: expected {} but got {}",
-                array_elem_chain.len() - 1,
-                indices.len()
-            );
-        }
         if !self.should_eval {
+            if array_elem_chain.len() <= indices.len() {
+                panic!(
+                    "array index length too long: expected > {} but got {}",
+                    array_elem_chain.len() - 1,
+                    indices.len()
+                );
+            }
             let var = match indexee {
                 Expr::Ident(Ident::Variable(var)) => var,
                 _ => panic!("expect variable"),
             };
+            let index_top_level = indices.len();
             return (
                 Expr::ArrayIndex(Box::new(ArrayIndex {
                     indexee: Ident::Variable(var),
                     indices,
                     vtype: RefCell::new(indexee_ty),
                 })),
-                array_elem_chain.last().unwrap().clone(),
+                array_elem_chain[index_top_level].clone(),
+            );
+        }
+        if array_elem_chain.len() != indices.len() + 1 {
+            panic!(
+                "array index length mismatch: expected {} but got {}",
+                array_elem_chain.len() - 1,
+                indices.len()
             );
         }
 
@@ -220,7 +228,24 @@ impl<'a> ExprNormalizer<'a> {
         let rhs = Self::operand_lvalue_to_rvalue(rhs, &rhs_ty);
 
         // 操作数类型归一化
-        let (lhs, rhs, ty) = Self::binary_alu_operand_add_cast(lhs, rhs, &lhs_ty, &rhs_ty);
+        let (lhs, rhs, ty) = match binop.op {
+            Operator::Add | Operator::Sub | Operator::Mul | Operator::Div | Operator::Mod => {
+                Self::binary_alu_operand_add_cast(binop.op, lhs, rhs, &lhs_ty, &rhs_ty)
+            }
+            Operator::Eq
+            | Operator::Ne
+            | Operator::Gt
+            | Operator::Ge
+            | Operator::Lt
+            | Operator::Le => {
+                Self::binary_cmp_operand_add_cast(binop.op, lhs, rhs, &lhs_ty, &rhs_ty)
+            }
+
+            Operator::LogicalAnd | Operator::LogicalOr => {
+                Self::binary_short_circuit_operand_add_cast(lhs, rhs, &lhs_ty, &rhs_ty)
+            }
+            _ => panic!("unsupported binary operator: {:?}", binop.op),
+        };
 
         (
             Expr::BinOP(Box::new(BinExp {
@@ -228,10 +253,7 @@ impl<'a> ExprNormalizer<'a> {
                 lhs,
                 rhs,
             })),
-            match binop.op {
-                Operator::Add | Operator::Sub | Operator::Mul | Operator::Div | Operator::Mod => ty,
-                _ => AstType::Bool,
-            },
+            ty,
         )
     }
     fn eval_binop(
@@ -331,6 +353,7 @@ impl<'a> ExprNormalizer<'a> {
     /// - `* & bool`, `bool & *` -> panic
     /// - else -> no cast
     fn binary_alu_operand_add_cast(
+        operator: Operator,
         lhs: Expr,
         rhs: Expr,
         lhs_ty: &AstType,
@@ -364,7 +387,111 @@ impl<'a> ExprNormalizer<'a> {
                 };
                 (lhs, rhs, AstType::Float)
             }
-            _ => panic!("unsupported operand types: {:?} and {:?}", lhs_ty, rhs_ty),
+            (AstType::Bool, AstType::Int) => {
+                let lhs = if let Expr::Literal(Literal::Int(_)) = lhs {
+                    lhs
+                } else {
+                    Expr::ImplicitCast(Box::new(ImplicitCast {
+                        kind: Operator::BoolToInt,
+                        expr: lhs,
+                        target: AstType::Int,
+                    }))
+                };
+                (lhs, rhs, AstType::Int)
+            }
+            (AstType::Int, AstType::Bool) => {
+                let rhs = if let Expr::Literal(Literal::Int(_)) = rhs {
+                    rhs
+                } else {
+                    Expr::ImplicitCast(Box::new(ImplicitCast {
+                        kind: Operator::BoolToInt,
+                        expr: rhs,
+                        target: AstType::Int,
+                    }))
+                };
+                (lhs, rhs, AstType::Int)
+            }
+            (AstType::Bool, AstType::Float) => {
+                let lhs = if let Expr::Literal(Literal::Int(i)) = lhs {
+                    Expr::Literal(Literal::Float(i as f32))
+                } else {
+                    Expr::ImplicitCast(Box::new(ImplicitCast {
+                        kind: Operator::BoolToFloat,
+                        expr: lhs,
+                        target: AstType::Float,
+                    }))
+                };
+                (lhs, rhs, AstType::Float)
+            }
+            (AstType::Float, AstType::Bool) => {
+                let rhs = if let Expr::Literal(Literal::Int(i)) = rhs {
+                    Expr::Literal(Literal::Float(i as f32))
+                } else {
+                    Expr::ImplicitCast(Box::new(ImplicitCast {
+                        kind: Operator::BoolToFloat,
+                        expr: rhs,
+                        target: AstType::Float,
+                    }))
+                };
+                (lhs, rhs, AstType::Float)
+            }
+            _ => panic!(
+                "unsupported operand types on operator {:?}: {:?} and {:?}",
+                operator, lhs_ty, rhs_ty
+            ),
+        }
+    }
+
+    fn binary_cmp_operand_add_cast(
+        operator: Operator,
+        lhs: Expr,
+        rhs: Expr,
+        lhs_ty: &AstType,
+        rhs_ty: &AstType,
+    ) -> (Expr, Expr, AstType) {
+        let (lhs, rhs, _) = Self::binary_alu_operand_add_cast(operator, lhs, rhs, lhs_ty, rhs_ty);
+        (lhs, rhs, AstType::Bool)
+    }
+
+    fn binary_short_circuit_operand_add_cast(
+        lhs: Expr,
+        rhs: Expr,
+        lhs_ty: &AstType,
+        rhs_ty: &AstType,
+    ) -> (Expr, Expr, AstType) {
+        let lhs = Self::operand_cast_to_bool(lhs, lhs_ty);
+        let rhs = Self::operand_cast_to_bool(rhs, rhs_ty);
+        (lhs, rhs, AstType::Bool)
+    }
+    pub fn operand_cast_to_bool(operand: Expr, operand_ty: &AstType) -> Expr {
+        match operand_ty {
+            AstType::Bool => operand,
+            AstType::Int => {
+                if let Expr::Literal(Literal::Int(i)) = operand {
+                    Expr::Literal(Literal::Int(if i == 0 { 0 } else { 1 }))
+                } else {
+                    Expr::CmpOP(Box::new(BinExp {
+                        op: Operator::Ne,
+                        lhs: operand,
+                        rhs: Expr::Literal(Literal::Int(0)),
+                    }))
+                }
+            }
+            AstType::Float => {
+                if let Expr::Literal(Literal::Float(f)) = operand {
+                    Expr::Literal(Literal::Int(if f == 0.0 { 0 } else { 1 }))
+                } else {
+                    Expr::CmpOP(Box::new(BinExp {
+                        op: Operator::Ne,
+                        lhs: operand,
+                        rhs: Expr::Literal(Literal::Float(0.0)),
+                    }))
+                }
+            }
+            _ => panic!(
+                "unsupported operand type for boolean conversion: {:?}",
+                operand_ty
+            ),
         }
     }
 
@@ -377,6 +504,13 @@ impl<'a> ExprNormalizer<'a> {
         }
         // 左值转换
         let expr = Self::operand_lvalue_to_rvalue(expr, &ty);
+
+        let expr = if !matches!(op, Operator::LogicalNot) {
+            expr
+        } else {
+            Self::operand_cast_to_bool(expr, &ty)
+        };
+
         (
             Expr::UnaryOP(Box::new(UnaryExp { op, expr })),
             match op {
@@ -432,7 +566,7 @@ impl<'a> ExprNormalizer<'a> {
                         Some(ty) => ty,
                         None => continue,
                     };
-                    let arg = Self::call_arg_type_cast(funcarg_ty, &arg_ty, arg);
+                    let arg = Self::call_arg_type_cast(funcarg_ty, &arg_ty, arg, ident_line);
                     args.push(arg);
                 }
                 (
@@ -446,7 +580,7 @@ impl<'a> ExprNormalizer<'a> {
         }
     }
 
-    fn call_arg_type_cast(required: &AstType, operand_ty: &AstType, operand: Expr) -> Expr {
+    fn call_arg_type_cast(required: &AstType, operand_ty: &AstType, operand: Expr, ident_line: usize) -> Expr {
         if required == operand_ty {
             return operand;
         }
@@ -489,7 +623,7 @@ impl<'a> ExprNormalizer<'a> {
                 assert_eq!(&reqarr.elemty, &fixedarr.elemty);
                 operand
             }
-            _ => panic!("unsupported function argument type cast"),
+            _ => panic!("unsupported function argument type cast at line {}: {:?} to {:?}", ident_line, operand_ty, required),
         }
     }
 

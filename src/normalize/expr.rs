@@ -1,5 +1,8 @@
 use core::panic;
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use crate::{
     ast::{
@@ -26,6 +29,8 @@ use super::{
 pub struct ExprNormalizer<'a> {
     pub scope_stack: &'a Vec<Scope>,
     pub should_eval: bool,
+    pub stack_usage: Cell<usize>,
+    pub max_stack_usage: Cell<usize>,
 }
 
 impl<'a> ExprNormalizer<'a> {
@@ -33,6 +38,8 @@ impl<'a> ExprNormalizer<'a> {
         Self {
             scope_stack: &normalizer.scope,
             should_eval,
+            stack_usage: Cell::new(0),
+            max_stack_usage: Cell::new(0),
         }
     }
 
@@ -41,7 +48,8 @@ impl<'a> ExprNormalizer<'a> {
         expr: &Expr,
         type_request: Option<&AstType>,
     ) -> (Expr, AstType) {
-        match expr {
+        self.stack_usage.set(self.stack_usage.get() + 1);
+        let ret = match expr {
             Expr::None => (Expr::None, type_request.cloned().unwrap_or(AstType::Void)),
             Expr::Literal(literal) => {
                 let ty = match literal {
@@ -63,7 +71,7 @@ impl<'a> ExprNormalizer<'a> {
                     let elem = Self::assign_type_cast(&elemty, &ty, elem);
                     *elem_ref = elem;
                 }
-                (Expr::ArrayInitList(initlist.into_array(ty)), ty.clone())
+                (Expr::ArrayInitList(array_list), ty.clone())
             }
             Expr::Ident(ident) => self.normalize_ident(ident),
             Expr::ArrayIndex(idx) => self.normalize_array_index(idx),
@@ -80,7 +88,17 @@ impl<'a> ExprNormalizer<'a> {
             | Expr::ArrayInitList(_) => {
                 panic!("It's strange that we have normalized expression in an un-normalized AST")
             }
+        };
+        self.max_stack_usage
+            .set(self.max_stack_usage.get().max(self.stack_usage.get()));
+        self.stack_usage.set(self.stack_usage.get() - 1);
+        if self.stack_usage.get() == 0 {
+            let max_usage = self.max_stack_usage.get();
+            if max_usage > 1000 {
+                println!("max stack usage: {}", self.max_stack_usage.get());
+            }
         }
+        ret
     }
 
     pub fn normalize_ident(&mut self, ident: &Ident) -> (Expr, AstType) {
@@ -228,9 +246,18 @@ impl<'a> ExprNormalizer<'a> {
         let rhs = Self::operand_lvalue_to_rvalue(rhs, &rhs_ty);
 
         // 操作数类型归一化
-        let (lhs, rhs, ty) = match binop.op {
+        match binop.op {
             Operator::Add | Operator::Sub | Operator::Mul | Operator::Div | Operator::Mod => {
-                Self::binary_alu_operand_add_cast(binop.op, lhs, rhs, &lhs_ty, &rhs_ty)
+                let (l, r, t) =
+                    Self::binary_alu_operand_add_cast(binop.op, lhs, rhs, &lhs_ty, &rhs_ty);
+                (
+                    Expr::BinOP(Box::new(BinExp {
+                        op: binop.op,
+                        lhs: l,
+                        rhs: r,
+                    })),
+                    t,
+                )
             }
             Operator::Eq
             | Operator::Ne
@@ -238,23 +265,32 @@ impl<'a> ExprNormalizer<'a> {
             | Operator::Ge
             | Operator::Lt
             | Operator::Le => {
-                Self::binary_cmp_operand_add_cast(binop.op, lhs, rhs, &lhs_ty, &rhs_ty)
+                let (l, r, t) =
+                    Self::binary_cmp_operand_add_cast(binop.op, lhs, rhs, &lhs_ty, &rhs_ty);
+                (
+                    Expr::CmpOP(Box::new(BinExp {
+                        op: binop.op,
+                        lhs: l,
+                        rhs: r,
+                    })),
+                    t,
+                )
             }
 
             Operator::LogicalAnd | Operator::LogicalOr => {
-                Self::binary_short_circuit_operand_add_cast(lhs, rhs, &lhs_ty, &rhs_ty)
+                let (l, r, t) =
+                    Self::binary_short_circuit_operand_add_cast(lhs, rhs, &lhs_ty, &rhs_ty);
+                (
+                    Expr::ShortCircuit(Box::new(BinExp {
+                        op: binop.op,
+                        lhs: l,
+                        rhs: r,
+                    })),
+                    t,
+                )
             }
             _ => panic!("unsupported binary operator: {:?}", binop.op),
-        };
-
-        (
-            Expr::BinOP(Box::new(BinExp {
-                op: binop.op,
-                lhs,
-                rhs,
-            })),
-            ty,
-        )
+        }
     }
     fn eval_binop(
         &mut self,
@@ -580,7 +616,12 @@ impl<'a> ExprNormalizer<'a> {
         }
     }
 
-    fn call_arg_type_cast(required: &AstType, operand_ty: &AstType, operand: Expr, ident_line: usize) -> Expr {
+    fn call_arg_type_cast(
+        required: &AstType,
+        operand_ty: &AstType,
+        operand: Expr,
+        ident_line: usize,
+    ) -> Expr {
         if required == operand_ty {
             return operand;
         }
@@ -623,7 +664,10 @@ impl<'a> ExprNormalizer<'a> {
                 assert_eq!(&reqarr.elemty, &fixedarr.elemty);
                 operand
             }
-            _ => panic!("unsupported function argument type cast at line {}: {:?} to {:?}", ident_line, operand_ty, required),
+            _ => panic!(
+                "unsupported function argument type cast at line {}: {:?} to {:?}",
+                ident_line, operand_ty, required
+            ),
         }
     }
 

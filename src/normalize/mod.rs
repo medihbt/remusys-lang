@@ -46,7 +46,7 @@ use crate::{
 };
 
 pub mod expr;
-pub mod expr_norecurse;
+// pub mod expr_norecurse;
 pub mod scope;
 
 pub struct AstNormalizer<'a> {
@@ -116,11 +116,15 @@ impl<'a> AstNormalizer<'a> {
             match def {
                 Stmt::UnresolvedVarDecl(var) => {
                     let new_vardecl = self.normalize_unresolved_var_decl(var);
-                    sst_module.global_defs.push(Stmt::VarDecl(Box::new(new_vardecl)));
+                    sst_module
+                        .global_defs
+                        .push(Stmt::VarDecl(Box::new(new_vardecl)));
                 }
                 Stmt::VarDecl(var) => {
                     let new_vardecl = self.normalize_resolved_var_decl(var);
-                    sst_module.global_defs.push(Stmt::VarDecl(Box::new(new_vardecl)));
+                    sst_module
+                        .global_defs
+                        .push(Stmt::VarDecl(Box::new(new_vardecl)));
                 }
                 Stmt::FuncDecl(func) => {
                     self.normalize_func(func, sst_module);
@@ -130,6 +134,17 @@ impl<'a> AstNormalizer<'a> {
         }
     }
 
+    fn normalize_unresolved_var_decl(&mut self, var_decl: &UnresolvedVarDecl) -> VarDecl {
+        let is_const = var_decl.is_const;
+        let base_ty = &var_decl.base_type;
+        let new_defs = self.resolve_vardefs(var_decl.defs.as_ref(), is_const, true);
+        let new_var_decl = VarDecl {
+            is_const,
+            base_type: base_ty.clone(),
+            defs: new_defs,
+        };
+        new_var_decl
+    }
     fn normalize_resolved_var_decl(&mut self, var_decl: &VarDecl) -> VarDecl {
         let mut new_defs = vec![];
         for var in var_decl.defs.iter() {
@@ -149,43 +164,11 @@ impl<'a> AstNormalizer<'a> {
         };
         new_var_decl
     }
-    fn vardecl_fill_scope_symtab(&mut self, vardefs: &[Rc<Variable>]) {
-        for var in vardefs.iter() {
-            if self.peek_scope().symbols.contains_key(&var.name) {
-                panic!("Variable {} already exists in the current scope", var.name);
-            }
-            if var.is_const() {
-                self.peek_scope_mut().add_const(
-                    var.name.clone(),
-                    var.initval.clone(),
-                    var.var_type.clone(),
-                    var.clone(),
-                );
-            } else {
-                self.peek_scope_mut().add_var(var.name.clone(), var.clone());
-            }
-        }
-    }
-    fn normalize_unresolved_var_decl(
-        &mut self,
-        var_decl: &UnresolvedVarDecl,
-    ) -> VarDecl {
-        let is_const = var_decl.is_const;
-        let base_ty = &var_decl.base_type;
-        let new_defs = self.resolve_vardefs(var_decl.defs.as_ref(), is_const);
-        let new_var_decl = VarDecl {
-            is_const,
-            base_type: base_ty.clone(),
-            defs: new_defs,
-        };
-        self.vardecl_fill_scope_symtab(new_var_decl.defs.as_ref());
-        new_var_decl
-    }
-
     fn resolve_vardefs(
         &mut self,
         unresolved_defs: &[UnresolvedVariable],
         is_const: bool,
+        add_to_scope: bool,
     ) -> Box<[Rc<Variable>]> {
         let mut new_defs = Vec::with_capacity(unresolved_defs.len());
         for uvar in unresolved_defs.iter() {
@@ -204,8 +187,37 @@ impl<'a> AstNormalizer<'a> {
                 kind,
             });
             new_defs.push(var.clone());
+            if add_to_scope {
+                self.add_variable_to_scope(&var);
+            }
         }
         new_defs.into_boxed_slice()
+    }
+
+    fn vardecl_fill_scope_symtab(&mut self, vardefs: &[Rc<Variable>]) {
+        for var in vardefs.iter() {
+            self.add_variable_to_scope(var);
+        }
+    }
+    fn add_variable_to_scope(&mut self, var: &Rc<Variable>) {
+        if self.peek_scope().symbols.contains_key(&var.name) {
+            panic!(
+                "Variable {} already exists in the current scope {}  (inner layer {})",
+                var.name,
+                self.scope.len() - 1,
+                self.peek_scope().layer
+            );
+        }
+        if var.is_const() {
+            self.peek_scope_mut().add_const(
+                var.name.clone(),
+                var.initval.clone(),
+                var.var_type.clone(),
+                var.clone(),
+            );
+        } else {
+            self.peek_scope_mut().add_var(var.name.clone(), var.clone());
+        }
     }
 
     fn array_dimensions_to_type(&self, arrsub: &[Expr], basety: &AstType) -> AstType {
@@ -247,7 +259,7 @@ impl<'a> AstNormalizer<'a> {
 
     fn normalize_func(&mut self, old_func: &Function, sst_module: &mut AstModule) {
         // 解析参数
-        let args = self.resolve_vardefs(old_func.unresolved_args.as_slice(), false);
+        let args = self.resolve_vardefs(old_func.unresolved_args.as_slice(), false, false);
         let new_func = Rc::new(Function {
             name: old_func.name.clone(),
             ret_type: old_func.ret_type.clone(),
@@ -257,7 +269,9 @@ impl<'a> AstNormalizer<'a> {
             body: RefCell::new(None),
             attr: old_func.attr.clone(),
         });
-        sst_module.global_defs.push(Stmt::FuncDecl(new_func.clone()));
+        sst_module
+            .global_defs
+            .push(Stmt::FuncDecl(new_func.clone()));
         if old_func.is_extern() {
             // extern 函数不需要处理函数体
             return;

@@ -53,6 +53,12 @@ impl Literal {
             (Literal::Float(f), Literal::Int(i)) => f.partial_cmp(&(*i as f32)).unwrap(),
         }
     }
+    pub fn ast_type(&self) -> AstType {
+        match self {
+            Literal::Int(_) => AstType::Int,
+            Literal::Float(_) => AstType::Float,
+        }
+    }
 
     pub fn add(&self, other: &Self) -> (Self, AstType) {
         match (self, other) {

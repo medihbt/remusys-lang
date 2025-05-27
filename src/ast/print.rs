@@ -1,10 +1,17 @@
 use core::panic;
-use std::cell::{Cell, RefCell};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use super::{
-    expr::{ident::Ident, Expr}, stmt::{
-        block::Block, decl::{Function, UnresolvedVarDecl, UnresolvedVariable, VarDecl}, Stmt
-    }, AstModule
+    AstModule,
+    expr::{Expr, ident::Ident},
+    stmt::{
+        Stmt,
+        block::Block,
+        decl::{Function, UnresolvedVarDecl, UnresolvedVariable, VarDecl, Variable},
+    },
 };
 
 pub struct AstPrinter<'a> {
@@ -99,22 +106,25 @@ impl<'a> AstPrinter<'a> {
         ));
         self.write_str("Vars: [");
         if !vardecl.defs.is_empty() {
-            self.push_indent();
-            for (idx, var) in vardecl.defs.iter().enumerate() {
-                self.wrap_indent();
-                self.write_fmt(format_args!(
-                    "[{}] = \"{}\" (kind = {:?}, type = {:?})",
-                    idx, var.name, var.kind, var.var_type
-                ));
-                if !matches!(var.initval, Expr::None) {
-                    self.write_str(" = ");
-                    self.run_on_expr(&var.initval);
-                }
-            }
-            self.pop_indent();
-            self.wrap_indent();
+            self.run_on_resolved_vars(&vardecl.defs);
         }
         self.write_str("]");
+    }
+    fn run_on_resolved_vars(&mut self, vars: &[Rc<Variable>]) {
+        self.push_indent();
+        for (idx, var) in vars.iter().enumerate() {
+            self.wrap_indent();
+            self.write_fmt(format_args!(
+                "[{}] = \"{}\" (kind = {:?}, type = {})",
+                idx, var.name, var.kind, var.var_type.to_string()
+            ));
+            if !matches!(var.initval, Expr::None) {
+                self.write_str(" = ");
+                self.run_on_expr(&var.initval);
+            }
+        }
+        self.pop_indent();
+        self.wrap_indent();
     }
 
     pub fn print_function(&mut self, func: &Function) {
@@ -129,6 +139,12 @@ impl<'a> AstPrinter<'a> {
         self.push_indent();
         self.wrap_indent();
         self.run_on_unresolved_vars("Arguments", &func.unresolved_args, false);
+        if !func.resolved_args.is_empty() {
+            self.wrap_indent();
+            self.write_str("Resolved Arguments: [");
+            self.run_on_resolved_vars(&func.resolved_args);
+            self.write_str("]");
+        }
 
         self.wrap_indent();
         if let Some(body) = func.body.borrow().as_ref() {

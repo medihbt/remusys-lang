@@ -44,6 +44,9 @@ impl ArrayInitList {
     pub fn n_final_elements(&self) -> usize {
         self.dimensions[0]
     }
+    pub fn final_elem_type(&self) -> &AstType {
+        self.type_levels.last().unwrap()
+    }
 
     pub fn index_at(&mut self, index: &MultiLevelIndex) -> &mut Expr {
         if index.n_dimensions() != self.n_dimensions() {

@@ -564,7 +564,7 @@ impl<'a> AstPrinter<'a> {
         }
 
         match expr {
-            Expr::RawInitList(_) => {
+            Expr::RawInitList(_) | Expr::Call(_) => {
                 self.write_str("]");
             }
             Expr::ArrayInitList(_) => {
@@ -581,7 +581,6 @@ impl<'a> AstPrinter<'a> {
             | Expr::ShortCircuit(_)
             | Expr::UnaryOP(_)
             | Expr::ImplicitCast(_)
-            | Expr::Call(_)
             | Expr::Assign(_) => {
                 self.write_str("}");
             }

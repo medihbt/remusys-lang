@@ -16,8 +16,8 @@ mod tests {
 
     #[test]
     fn parsing_test() {
-        // let base_path = "target/functional-sy";
-        let base_path = "target/self-test";
+        let base_path = "target/functional-sy";
+        // let base_path = "target/self-test";
         let base_path = std::path::Path::new(base_path);
 
         for entry in std::fs::read_dir(base_path).unwrap() {

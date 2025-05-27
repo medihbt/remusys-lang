@@ -306,10 +306,10 @@ CmpEqExpr: Expr = {
 };
 CmpOrdExpr: Expr = {
     BinAddExpr,
-    <lhs: CmpOrdExpr> "<" <rhs: BinAddExpr> => Expr::BinOP(Box::new(BinExp { op: Operator::Le, lhs, rhs })),
-    <lhs: CmpOrdExpr> ">" <rhs: BinAddExpr> => Expr::BinOP(Box::new(BinExp { op: Operator::Ge, lhs, rhs })),
-    <lhs: CmpOrdExpr> "<=" <rhs: BinAddExpr> => Expr::BinOP(Box::new(BinExp { op: Operator::Lt, lhs, rhs })),
-    <lhs: CmpOrdExpr> ">=" <rhs: BinAddExpr> => Expr::BinOP(Box::new(BinExp { op: Operator::Gt, lhs, rhs })),
+    <lhs: CmpOrdExpr> "<" <rhs: BinAddExpr> => Expr::BinOP(Box::new(BinExp { op: Operator::Lt, lhs, rhs })),
+    <lhs: CmpOrdExpr> ">" <rhs: BinAddExpr> => Expr::BinOP(Box::new(BinExp { op: Operator::Gt, lhs, rhs })),
+    <lhs: CmpOrdExpr> "<=" <rhs: BinAddExpr> => Expr::BinOP(Box::new(BinExp { op: Operator::Le, lhs, rhs })),
+    <lhs: CmpOrdExpr> ">=" <rhs: BinAddExpr> => Expr::BinOP(Box::new(BinExp { op: Operator::Ge, lhs, rhs })),
 };
 
 pub Expr: Expr = BinAddExpr;

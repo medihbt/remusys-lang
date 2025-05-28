@@ -4,7 +4,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::typing::{AstType, FixedArrayType};
+use crate::typing::AstType;
 
 use crate::ast::{
     AstModule,

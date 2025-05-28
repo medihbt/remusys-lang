@@ -19,7 +19,6 @@ use crate::{
         operator::Operator,
     },
     typing::AstType,
-    util::MultiLevelIndex,
 };
 
 use super::{

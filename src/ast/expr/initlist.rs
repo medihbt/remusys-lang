@@ -1,7 +1,4 @@
-use crate::{
-    typing::{AstType, FixedArrayType},
-    util::MultiLevelIndex,
-};
+use crate::typing::{AstType, FixedArrayType};
 
 use super::{Expr, literal::Literal};
 
@@ -46,41 +43,6 @@ impl ArrayInitList {
     }
     pub fn final_elem_type(&self) -> &AstType {
         self.type_levels.last().unwrap()
-    }
-
-    pub fn index_at(&mut self, index: &MultiLevelIndex) -> &mut Expr {
-        if index.n_dimensions() != self.n_dimensions() {
-            panic!(
-                "Dimension level overflow: requires (0..{}) but got {}",
-                self.n_dimensions(),
-                index.n_dimensions()
-            );
-        }
-        if index.ends() {
-            panic!("Index out of bounds");
-        }
-        let mut final_index = 0;
-        for i in 0..index.n_dimensions() {
-            final_index += index.curr[i] * self.dimensions[i + 1];
-        }
-        &mut self.final_elems[final_index]
-    }
-    pub fn index_get(&self, index: &MultiLevelIndex) -> &Expr {
-        if index.n_dimensions() != self.n_dimensions() {
-            panic!(
-                "Dimension level overflow: requires (0..{}) but got {}",
-                self.n_dimensions(),
-                index.n_dimensions()
-            );
-        }
-        if index.ends() {
-            panic!("Index out of bounds");
-        }
-        let mut final_index = 0;
-        for i in 0..index.n_dimensions() {
-            final_index += index.curr[i] * self.dimensions[i + 1];
-        }
-        &self.final_elems[final_index]
     }
 
     /// Creates a dimension stack for a fixed array type.
@@ -183,7 +145,7 @@ impl RawInitList {
                 Expr::IntrinsicTimeEnd(..) => panic!("Found intrinsic time end items"),
                 Expr::ShortCircuit(..) => panic!("Found short circuit items"),
                 Expr::String(..) => panic!("Found string items"),
-                
+
                 // Other types
                 _ => {
                     to_fill.final_elems[curr_idx] = exp.clone();

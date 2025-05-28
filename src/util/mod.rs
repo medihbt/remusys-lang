@@ -20,8 +20,8 @@ impl MultiLevelIndex {
     pub fn from_dim_iter(iter: impl Iterator<Item = usize>) -> Self {
         let dims: Vec<usize> = iter.collect();
         Self {
-            curr: vec![0; dims.len()].into_boxed_slice(),
-            end: dims.into(),
+            curr: dims.into_boxed_slice(),
+            end: Vec::new().into_boxed_slice(),
         }
     }
 

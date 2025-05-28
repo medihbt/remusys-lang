@@ -12,6 +12,7 @@ use crate::{
             call::Call,
             ident::Ident,
             index::ArrayIndex,
+            initlist::ArrayInitList,
             literal::Literal,
             unaryop::{ImplicitCast, UnaryExp},
         },
@@ -214,19 +215,37 @@ impl<'a> ExprNormalizer<'a> {
             );
         }
 
-        let int_indices = indices.iter().map(|e| match e {
-            Expr::Literal(Literal::Int(i)) => *i as usize,
-            _ => panic!("expect int literal"),
-        });
-        let mlindex = MultiLevelIndex::from_dim_iter(int_indices);
         let arr_indexee = match indexee {
             Expr::ArrayInitList(arr) => arr,
             _ => panic!("expect array init list"),
         };
         (
-            arr_indexee.index_get(&mlindex).clone(),
+            Self::get_array_elem_from_index(&indices, &arr_indexee),
             array_elem_chain.last().unwrap().clone(),
         )
+    }
+
+    fn get_array_elem_from_index(indices: &[Expr], array_list: &ArrayInitList) -> Expr {
+        let dimensions = array_list.dimensions.as_ref();
+        let mut final_index = 0;
+        for (level, index) in indices.iter().enumerate() {
+            let int_index = match index {
+                Expr::Literal(Literal::Int(i)) => *i as usize,
+                _ => panic!("expect int literal for array index"),
+            };
+            if int_index >= dimensions[level] {
+                panic!(
+                    "array index out of bounds: {} >= {}",
+                    int_index,
+                    dimensions[level]
+                );
+            }
+            final_index += int_index * array_list.n_final_elems[level + 1];
+        }
+        if final_index >= array_list.final_elems.len() {
+            panic!("array index out of bounds: {}", final_index);
+        }
+        array_list.final_elems[final_index].clone()
     }
 
     fn normalize_binop(&mut self, binop: &BinExp) -> (Expr, AstType) {

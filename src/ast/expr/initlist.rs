@@ -1,6 +1,6 @@
 use crate::typing::{AstType, FixedArrayType};
 
-use super::{Expr, literal::Literal};
+use super::Expr;
 
 use std::rc::Rc;
 
@@ -17,15 +17,7 @@ impl ArrayInitList {
         let type_levels = Self::_build_type_levels(Rc::clone(&arr_type));
         let (dimensions, n_elems) = Self::_build_dimensions(&type_levels);
 
-        let final_elems = {
-            let final_type = type_levels.last().unwrap();
-            let elem = match final_type {
-                AstType::Int => Literal::Int(0),
-                AstType::Float => Literal::Float(0.0),
-                _ => panic!("Unsupported type {:?} for array initialization", final_type),
-            };
-            vec![Expr::Literal(elem); n_elems[0]].into_boxed_slice()
-        };
+        let final_elems = vec![Expr::None; n_elems[0]].into_boxed_slice();
 
         Self {
             final_elems,
@@ -166,6 +158,7 @@ impl RawInitList {
 #[cfg(test)]
 mod testing {
     use super::*;
+    use crate::ast::expr::literal::Literal;
 
     #[test]
     fn test_array_init_list() {

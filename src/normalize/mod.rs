@@ -53,6 +53,7 @@ pub struct AstNormalizer<'a> {
     pub ast_module: &'a AstModule,
     pub scope: Vec<Scope>,
     pub loop_stack: Vec<Rc<WhileStmt>>,
+    curr_func: Option<Rc<Function>>,
 }
 
 impl<'a> AstNormalizer<'a> {
@@ -61,6 +62,7 @@ impl<'a> AstNormalizer<'a> {
             ast_module,
             scope: vec![Scope::new(0)],
             loop_stack: vec![],
+            curr_func: None,
         }
     }
 
@@ -101,13 +103,32 @@ impl<'a> AstNormalizer<'a> {
         sst_module
     }
 
-    fn normalze_expr(&self, expr: &Expr, type_req: Option<&AstType>, should_eval: bool) -> Expr {
+    fn normalze_expr(
+        &self,
+        expr: &Expr,
+        type_req: Option<&AstType>,
+        should_eval: bool,
+        requires_rvalue: bool,
+    ) -> Expr {
         let mut expr_normalizer = ExprNormalizer::from_normalizer(self, should_eval);
         let (new_expr, new_type) = expr_normalizer.normalize_build_expr(expr, type_req);
-        if let Some(AstType::Bool) = type_req {
-            ExprNormalizer::operand_cast_to_bool(new_expr, &new_type)
+
+        let new_expr = if requires_rvalue {
+            ExprNormalizer::operand_lvalue_to_rvalue(new_expr, &new_type)
         } else {
             new_expr
+        };
+        match type_req {
+            Some(target_ty) => {
+                match target_ty {
+                    AstType::Bool => ExprNormalizer::operand_cast_to_bool(new_expr, &new_type),
+                    AstType::Int | AstType::Float => {
+                        ExprNormalizer::assign_type_cast(target_ty, &new_type, new_expr)
+                    }
+                    _ => new_expr, /* 不敢随便转换 */
+                }
+            }
+            None => new_expr,
         }
     }
 
@@ -148,7 +169,8 @@ impl<'a> AstNormalizer<'a> {
     fn normalize_resolved_var_decl(&mut self, var_decl: &VarDecl) -> VarDecl {
         let mut new_defs = vec![];
         for var in var_decl.defs.iter() {
-            let initval = self.normalze_expr(&var.initval, Some(&var.var_type), var.is_const());
+            let initval =
+                self.normalze_expr(&var.initval, Some(&var.var_type), var.is_const(), false);
             new_defs.push(Rc::new(Variable {
                 name: var.name.clone(),
                 var_type: var.var_type.clone(),
@@ -179,7 +201,7 @@ impl<'a> AstNormalizer<'a> {
             } else {
                 self.array_dimensions_to_type(&uvar.array_dims, &uvar.base_type)
             };
-            let initval = self.normalze_expr(&uvar.initval, Some(&varty), is_const);
+            let initval = self.normalze_expr(&uvar.initval, Some(&varty), is_const, false);
             let var = Rc::new(Variable {
                 name: name.into(),
                 var_type: varty,
@@ -223,7 +245,7 @@ impl<'a> AstNormalizer<'a> {
     fn array_dimensions_to_type(&self, arrsub: &[Expr], basety: &AstType) -> AstType {
         let mut arrsub = arrsub
             .iter()
-            .map(|x| self.normalze_expr(x, Some(&AstType::Int), true))
+            .map(|x| self.normalze_expr(x, Some(&AstType::Int), true, true))
             .collect::<Vec<_>>();
         // SysY 的数组类型顺序是从外到内, 但是我们需要从内到外.
         // 例如, 在 SysY 源码中的数组: `int a[2][3][4];`
@@ -285,7 +307,10 @@ impl<'a> AstNormalizer<'a> {
 
         let newblock = {
             let block = old_func.body.borrow();
-            self.normalize_block(block.as_ref().unwrap())
+            self.curr_func = Some(Rc::clone(&new_func));
+            let newblock = self.normalize_block(block.as_ref().unwrap());
+            self.curr_func = None;
+            newblock
         };
         new_func.body.replace(Some(newblock));
         self.pop_scope();
@@ -332,14 +357,19 @@ impl<'a> AstNormalizer<'a> {
                 Stmt::While(new_while_stmt)
             }
             Stmt::ExprStmt(expr_stmt) => {
-                let expr = self.normalze_expr(&expr_stmt.expr.borrow(), None, false);
+                let expr = self.normalze_expr(&expr_stmt.expr.borrow(), None, false, false);
                 Stmt::ExprStmt(Rc::new(ExprStmt {
                     expr: RefCell::new(expr),
                 }))
             }
             Stmt::Return(expr) => {
-                let expr = self.normalze_expr(expr, None, false);
-                Stmt::Return(Rc::new(expr))
+                let retval = self.normalze_expr(
+                    expr,
+                    Some(&self.curr_func.as_ref().unwrap().ret_type),
+                    false,
+                    true,
+                );
+                Stmt::Return(Rc::new(retval))
             }
             Stmt::Break => {
                 if self.loop_stack.is_empty() {
@@ -362,7 +392,7 @@ impl<'a> AstNormalizer<'a> {
     }
 
     fn normalize_if_stmt(&mut self, if_stmt: &IfStmt) -> IfStmt {
-        let cond = self.normalze_expr(&if_stmt.cond, Some(&AstType::Bool), false);
+        let cond = self.normalze_expr(&if_stmt.cond, Some(&AstType::Bool), false, true);
         let then_stmt = self.normalize_stmt(&if_stmt.then_stmt);
         let else_stmt = if_stmt.else_stmt.as_ref().map(|s| self.normalize_stmt(s));
         IfStmt {
@@ -373,7 +403,7 @@ impl<'a> AstNormalizer<'a> {
     }
 
     fn normalize_while_stmt(&mut self, while_stmt: &Rc<WhileStmt>) -> Rc<WhileStmt> {
-        let cond = self.normalze_expr(&while_stmt.cond, Some(&AstType::Bool), false);
+        let cond = self.normalze_expr(&while_stmt.cond, Some(&AstType::Bool), false, true);
         let new_while_stmt = Rc::new(WhileStmt {
             cond,
             body: RefCell::new(Box::new(Stmt::None)),

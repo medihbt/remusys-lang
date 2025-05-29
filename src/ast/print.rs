@@ -356,12 +356,14 @@ impl<'a> AstPrinter<'a> {
             }
             Expr::ArrayInitList(arrinit) => {
                 self.write_fmt(format_args!(
-                    "ArrayInitList (n_final_elems: {}, type: {:?}) {{",
+                    "ArrayInitList (n_final_elems: {}, type: {}) {{",
                     arrinit.final_elems.len(),
-                    arrinit.type_levels[0]
+                    arrinit.type_levels[0].to_string()
                 ));
                 self.push_indent();
+                self.wrap_indent();
                 self.write_fmt(format_args!("dimensions: {:?}", arrinit.dimensions));
+                self.wrap_indent();
                 self.write_str("final_elems: [");
                 expr_stack.push(ExprState::Exit {
                     indent: self.indent.get(),

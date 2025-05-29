@@ -388,7 +388,7 @@ impl<'a> ExprNormalizer<'a> {
         }
     }
 
-    fn operand_lvalue_to_rvalue(operand: Expr, operand_ty: &AstType) -> Expr {
+    pub(super) fn operand_lvalue_to_rvalue(operand: Expr, operand_ty: &AstType) -> Expr {
         match &operand {
             Expr::Ident(_) | Expr::ArrayIndex(_) => Expr::ImplicitCast(Box::new(ImplicitCast {
                 kind: Operator::LValueToRValue,
@@ -708,7 +708,7 @@ impl<'a> ExprNormalizer<'a> {
 
         (Expr::Assign(Box::new(Assign { lhs, rhs })), AstType::Void)
     }
-    fn assign_type_cast(lhs_ty: &AstType, rhs_ty: &AstType, rhs: Expr) -> Expr {
+    pub(super) fn assign_type_cast(lhs_ty: &AstType, rhs_ty: &AstType, rhs: Expr) -> Expr {
         if lhs_ty == rhs_ty {
             return rhs;
         }

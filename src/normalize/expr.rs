@@ -235,8 +235,7 @@ impl<'a> ExprNormalizer<'a> {
             if int_index >= dimensions[level] {
                 panic!(
                     "array index out of bounds: {} >= {}",
-                    int_index,
-                    dimensions[level]
+                    int_index, dimensions[level]
                 );
             }
             final_index += int_index * array_list.n_final_elems[level + 1];
@@ -616,11 +615,22 @@ impl<'a> ExprNormalizer<'a> {
                         }
                         _ => arg,
                     };
-                    let funcarg_ty = match func.get_arg_type(index) {
-                        Some(ty) => ty,
-                        None => continue,
+                    let arg = match func.get_arg_type(index) {
+                        Some(funcarg_ty) => {
+                            Self::call_arg_type_cast(funcarg_ty, &arg_ty, arg, ident_line)
+                        }
+                        None => {
+                            if !func.is_vararg {
+                                panic!(
+                                    "Error at line {}: function `{}` cannot accept more than {} arguments",
+                                    ident_line,
+                                    func.name,
+                                    func.resolved_args.len()
+                                );
+                            }
+                            arg
+                        }
                     };
-                    let arg = Self::call_arg_type_cast(funcarg_ty, &arg_ty, arg, ident_line);
                     args.push(arg);
                 }
                 (
@@ -649,7 +659,7 @@ impl<'a> ExprNormalizer<'a> {
                     return Expr::Literal(Literal::Int(f as i32));
                 }
                 Expr::ImplicitCast(Box::new(ImplicitCast {
-                    kind: Operator::ItoF,
+                    kind: Operator::FtoI,
                     expr: operand,
                     target: AstType::Float,
                 }))

@@ -30,7 +30,7 @@ impl MultiLevelIndex {
     }
 
     pub fn inc_dim(&mut self, lo: usize) -> bool {
-        self.inc_dim_range(self.end.len() - 1, lo)
+        self.inc_dim_range(self.end.len(), lo)
     }
     pub fn ends(&self) -> bool {
         self.curr[0] >= self.end[0]
@@ -60,27 +60,22 @@ impl MultiLevelIndex {
         if self.ends() {
             return false;
         }
-        if hi >= self.end.len() {
+        if hi > self.end.len() {
             panic!(
-                "Dimension level overflow: requires (0..{}) but got {}",
+                "Dimension level overflow: requires (0..={}) but got {}",
                 self.end.len(),
                 hi
             );
         }
-        let mut level = hi;
-        loop {
+        for level in (lo..hi).rev() {
             let new_dim = self.curr[level] + 1;
             if new_dim < self.end[level] {
                 self.curr[level] = new_dim;
                 return true;
             }
-            if level <= lo {
-                // We are at the end of the last dimension
-                return false;
-            }
             self.curr[level] = 0;
-            level -= 1;
         }
+        false
     }
 }
 

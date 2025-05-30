@@ -174,6 +174,7 @@ impl<'a> ExprNormalizer<'a> {
             if index_ty != AstType::Int {
                 panic!("array index must be int");
             }
+            let index = Self::operand_lvalue_to_rvalue(index, &index_ty);
             if self.should_eval && !matches!(index, Expr::Literal(Literal::Int(_))) {
                 panic!(
                     "cannot eval array index: requires int literal but got {:?}",
@@ -548,38 +549,57 @@ impl<'a> ExprNormalizer<'a> {
         }
     }
 
+    pub fn operand_cast_to_value(operand: Expr, operand_ty: &AstType) -> (Expr, AstType) {
+        match operand_ty {
+            AstType::Int | AstType::Float => (operand, operand_ty.clone()),
+            AstType::Bool => {
+                let operand = Expr::ImplicitCast(Box::new(ImplicitCast {
+                    kind: Operator::BoolToInt,
+                    expr: operand,
+                    target: AstType::Int,
+                }));
+                (operand, AstType::Int)
+            }
+            _ => panic!(
+                "unsupported operand type for value conversion: {:?}",
+                operand_ty
+            ),
+        }
+    }
+
     fn normalize_unary_op(&mut self, unary: &UnaryExp) -> (Expr, AstType) {
         let (op, expr) = (unary.op, &unary.expr);
         let (expr, ty) = self.normalize_build_expr(&expr, None);
 
-        if self.should_eval {
-            return Self::eval_unary_op(op, &expr, ty);
+        // 先尝试直接计算结果
+        if let Some((expr, ty)) = Self::eval_unary_op(op, &expr, ty.clone()) {
+            return (expr, ty);
+        } else if self.should_eval {
+            panic!("cannot eval unary operator: {:?}", op);
         }
         // 左值转换
         let expr = Self::operand_lvalue_to_rvalue(expr, &ty);
 
-        let expr = if !matches!(op, Operator::LogicalNot) {
-            expr
-        } else {
-            Self::operand_cast_to_bool(expr, &ty)
+        let (expr, ty) = match op {
+            Operator::LogicalNot => (Self::operand_cast_to_bool(expr, &ty), AstType::Bool),
+            Operator::Add | Operator::Positive | Operator::Sub | Operator::Neg => {
+                Self::operand_cast_to_value(expr, &ty)
+            }
+            _ => panic!("unsupported unary operator: {:?}", op),
         };
 
-        (
-            Expr::UnaryOP(Box::new(UnaryExp { op, expr })),
-            match op {
-                Operator::LogicalNot => AstType::Bool,
-                Operator::Add | Operator::Positive => ty.clone(),
-                Operator::Sub | Operator::Neg => ty.clone(),
-                _ => panic!("unsupported unary operator: {:?}", op),
-            },
-        )
+        (Expr::UnaryOP(Box::new(UnaryExp { op, expr })), ty)
     }
-    fn eval_unary_op(operator: Operator, operand: &Expr, operand_ty: AstType) -> (Expr, AstType) {
+    fn eval_unary_op(
+        operator: Operator,
+        operand: &Expr,
+        operand_ty: AstType,
+    ) -> Option<(Expr, AstType)> {
         let operand = match operand {
             Expr::Literal(l) => l,
-            _ => panic!("expect literal"),
+            _ => return None,
         };
-        match operator {
+        let ret = match operator {
             Operator::LogicalNot => match operand {
                 Literal::Int(0) => (Expr::Literal(Literal::Int(1)), AstType::Bool),
                 _ => (Expr::Literal(Literal::Int(0)), AstType::Bool),
@@ -587,7 +607,8 @@ impl<'a> ExprNormalizer<'a> {
             Operator::Add | Operator::Positive => (Expr::Literal(operand.clone()), operand_ty),
             Operator::Sub | Operator::Neg => (Expr::Literal(operand.neg().0), operand_ty),
             _ => panic!("unsupported unary operator: {:?}", operator),
-        }
+        };
+        Some(ret)
     }
     fn normalize_call_expr(&mut self, call: &Call) -> (Expr, AstType) {
         if self.should_eval {

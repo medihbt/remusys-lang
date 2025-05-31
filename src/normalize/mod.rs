@@ -170,7 +170,7 @@ impl<'a> AstNormalizer<'a> {
         let mut new_defs = vec![];
         for var in var_decl.defs.iter() {
             let initval =
-                self.normalze_expr(&var.initval, Some(&var.var_type), var.is_const(), false);
+                self.normalze_expr(&var.initval, Some(&var.var_type), var.is_const(), true);
             new_defs.push(Rc::new(Variable {
                 name: var.name.clone(),
                 var_type: var.var_type.clone(),
@@ -201,7 +201,7 @@ impl<'a> AstNormalizer<'a> {
             } else {
                 self.array_dimensions_to_type(&uvar.array_dims, &uvar.base_type)
             };
-            let initval = self.normalze_expr(&uvar.initval, Some(&varty), is_const, false);
+            let initval = self.normalze_expr(&uvar.initval, Some(&varty), is_const, true);
             let var = Rc::new(Variable {
                 name: name.into(),
                 var_type: varty,

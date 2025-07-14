@@ -580,15 +580,30 @@ impl<'a> ExprNormalizer<'a> {
         // 左值转换
         let expr = Self::operand_lvalue_to_rvalue(expr, &ty);
 
-        let (expr, ty) = match op {
-            Operator::LogicalNot => (Self::operand_cast_to_bool(expr, &ty), AstType::Bool),
+        match op {
+            Operator::LogicalNot => {
+                let operand = Self::operand_cast_to_bool(expr, &ty);
+                if let Expr::CmpOP(mut cmp) = operand {
+                    cmp.op = match cmp.op {
+                        Operator::Eq => Operator::Ne,
+                        Operator::Ne => Operator::Eq,
+                        Operator::Gt => Operator::Le,
+                        Operator::Ge => Operator::Lt,
+                        Operator::Lt => Operator::Ge,
+                        Operator::Le => Operator::Gt,
+                        _ => panic!("unsupported operator for logical not: {:?}", cmp.op),
+                    };
+                    (Expr::CmpOP(cmp), AstType::Bool)
+                } else {
+                    (operand, AstType::Bool)
+                }
+            }
             Operator::Add | Operator::Positive | Operator::Sub | Operator::Neg => {
-                Self::operand_cast_to_value(expr, &ty)
+                let (expr, ty) = Self::operand_cast_to_value(expr, &ty);
+                (Expr::UnaryOP(Box::new(UnaryExp { op, expr })), ty)
             }
             _ => panic!("unsupported unary operator: {:?}", op),
-        };
-
-        (Expr::UnaryOP(Box::new(UnaryExp { op, expr })), ty)
+        }
     }
     fn eval_unary_op(
         operator: Operator,

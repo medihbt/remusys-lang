@@ -1,6 +1,6 @@
 use crate::typing::{AstType, FixedArrayType};
 
-use super::{literal::Literal, Expr};
+use super::{Expr, literal::Literal};
 
 use std::rc::Rc;
 
@@ -20,7 +20,10 @@ impl ArrayInitList {
         let elem_zero = match type_levels.last().unwrap() {
             AstType::Int => Expr::Literal(Literal::Int(0)),
             AstType::Float => Expr::Literal(Literal::Float(0.0)),
-            _ => panic!("Unsupported element type {:?} for array initialization", arr_type.elemty),
+            _ => panic!(
+                "Unsupported element type {:?} for array initialization",
+                arr_type.elemty
+            ),
         };
         let final_elems = vec![elem_zero; n_elems[0]].into_boxed_slice();
 
@@ -40,6 +43,25 @@ impl ArrayInitList {
     }
     pub fn final_elem_type(&self) -> &AstType {
         self.type_levels.last().unwrap()
+    }
+
+    pub fn is_zero_initializer(&self) -> bool {
+        self.final_elems.iter().all(|e| match e {
+            Expr::Literal(lit) => match lit {
+                Literal::Int(i) => *i == 0,
+                Literal::Float(f) => *f == 0.0,
+            },
+            _ => false,
+        })
+    }
+
+    pub fn get_size_bytes(&self) -> usize {
+        let elem_size = match self.final_elem_type() {
+            AstType::Int => 4,   // 32-bit integers
+            AstType::Float => 4, // 32-bit floats
+            _ => panic!("Unsupported element type for size calculation"),
+        };
+        elem_size * self.n_final_elements()
     }
 
     /// Creates a dimension stack for a fixed array type.

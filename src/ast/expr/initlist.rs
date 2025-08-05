@@ -39,7 +39,7 @@ impl ArrayInitList {
         self.dimensions.len() - 1
     }
     pub fn n_final_elements(&self) -> usize {
-        self.dimensions[0]
+        self.n_final_elems[0]
     }
     pub fn final_elem_type(&self) -> &AstType {
         self.type_levels.last().unwrap()

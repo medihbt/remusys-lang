@@ -1,12 +1,9 @@
-use lalrpop_util::lalrpop_mod;
-
 pub mod ast;
 pub mod normalize;
 pub mod parser;
 pub mod typing;
 pub mod util;
-
-lalrpop_mod!(pub grammar);
+pub mod grammar;
 
 #[cfg(test)]
 mod tests {

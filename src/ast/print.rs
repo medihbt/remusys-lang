@@ -116,7 +116,10 @@ impl<'a> AstPrinter<'a> {
             self.wrap_indent();
             self.write_fmt(format_args!(
                 "[{}] = \"{}\" (kind = {:?}, type = {})",
-                idx, var.name, var.kind, var.var_type.to_string()
+                idx,
+                var.name,
+                var.kind,
+                var.var_type.to_string()
             ));
             if !matches!(var.initval, Expr::None) {
                 self.write_str(" = ");
@@ -356,13 +359,22 @@ impl<'a> AstPrinter<'a> {
             }
             Expr::ArrayInitList(arrinit) => {
                 self.write_fmt(format_args!(
-                    "ArrayInitList (n_final_elems: {}, type: {}) {{",
-                    arrinit.final_elems.len(),
+                    "ArrayInitList (type: {}) {{",
                     arrinit.type_levels[0].to_string()
                 ));
                 self.push_indent();
                 self.wrap_indent();
                 self.write_fmt(format_args!("dimensions: {:?}", arrinit.dimensions));
+                self.wrap_indent();
+                self.write_fmt(format_args!(
+                    "n_final_elems (from array): {:?}",
+                    arrinit.final_elems.len()
+                ));
+                self.wrap_indent();
+                self.write_fmt(format_args!(
+                    "n_final_elems (from field): {:?}",
+                    arrinit.n_final_elems
+                ));
                 self.wrap_indent();
                 self.write_str("final_elems: [");
                 expr_stack.push(ExprState::Exit {
@@ -375,7 +387,7 @@ impl<'a> AstPrinter<'a> {
                     expr_stack.push(ExprState::Enter {
                         ident: self.indent.get(),
                         should_wrap: true,
-                        prefix: format!("[{}] = ", idx),
+                        prefix: format!("[{idx}] = "),
                         expr: item,
                     });
                 }
@@ -401,7 +413,7 @@ impl<'a> AstPrinter<'a> {
                     expr_stack.push(ExprState::Enter {
                         ident: self.indent.get(),
                         should_wrap: true,
-                        prefix: format!("[{}] = ", idx),
+                        prefix: format!("[{idx}] = "),
                         expr: index,
                     });
                 }

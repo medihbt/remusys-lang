@@ -54,6 +54,9 @@ impl ArrayInitList {
             _ => false,
         })
     }
+    pub fn is_constinit(&self) -> bool {
+        self.final_elems.iter().all(|e| matches!(e, Expr::Literal(_)))
+    }
 
     pub fn get_size_bytes(&self) -> usize {
         let elem_size = match self.final_elem_type() {

@@ -2,6 +2,13 @@
 name = "remusys-lang"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+description = "CSCC 2025 competition project, a Rust-and-LALRPOP-based SysY frontend"
+repository = "https://github.com/medihbt/remusys-ir"
+authors = ["medihbt"]
+readme = "README.md"
+keywords = ["compiler", "frontend", "lalrpop", "sysy", "cscc"]
+categories = ["compilers"]
 
 [dependencies]
 hexf-parse = "0.2.1"
